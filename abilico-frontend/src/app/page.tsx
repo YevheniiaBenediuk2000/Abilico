@@ -1,103 +1,158 @@
-import Image from "next/image";
+'use client';
+import React, { useState } from 'react';
 
-export default function Home() {
+// The list of possible preferences
+const possiblePreferences = [
+  'Entrance Accessibility',
+  'Indoor Mobility',
+  'Restroom Facilities',
+  'Seating & Table Accommodations',
+  'Parking & Transportation',
+  'Visual & Auditory Support',
+  'Emergency Preparedness',
+  'Staff Awareness and Assistance',
+];
+
+export default function RegisterPage() {
+  const [form, setForm] = useState({
+    name: '',
+    surname: '',
+    email: '',
+    password: '',
+    preferences: [] as string[], // store selected preferences
+  });
+
+  // Handle text input changes
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  // Handle preference checkbox toggles
+  const handleTogglePreference = (pref: string) => {
+    const { preferences } = form;
+    if (preferences.includes(pref)) {
+      // Remove if already selected
+      setForm({
+        ...form,
+        preferences: preferences.filter((p) => p !== pref),
+      });
+    } else {
+      // Add new preference if less than 5 selected
+      if (preferences.length < 5) {
+        setForm({ ...form, preferences: [...preferences, pref] });
+      } else {
+        alert('You can select up to 5 preferences.');
+      }
+    }
+  };
+
+  // Form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate at least 3 preferences
+    if (form.preferences.length < 3) {
+      alert('Please select at least 3 preferences.');
+      return;
+    }
+
+    try {
+      // Send registration data (including preferences) to your backend
+      const response = await fetch('http://localhost:5001/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        alert('Registration successful!');
+        console.log('Registered user:', data.user);
+        // Optionally clear form or navigate somewhere else
+        setForm({
+          name: '',
+          surname: '',
+          email: '',
+          password: '',
+          preferences: [],
+        });
+      } else {
+        alert(`Registration failed: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Server error:', error);
+      alert('Server error. Check console.');
+    }
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+      <div className="max-w-md mx-auto p-4">
+        <h1 className="text-2xl font-bold mb-4">Register</h1>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Basic fields */}
+          <input
+              type="text"
+              name="name"
+              placeholder="Name"
+              value={form.name}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              required
+          />
+          <input
+              type="text"
+              name="surname"
+              placeholder="Surname"
+              value={form.surname}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              required
+          />
+          <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              value={form.email}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              required
+          />
+          <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              value={form.password}
+              onChange={handleChange}
+              className="w-full p-2 border rounded"
+              required
+          />
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          {/* Preferences selection */}
+          <div>
+            <p className="font-semibold mb-2">Choose 3–5 accessibility categories that matter most to you.</p>
+            <ul className="space-y-1">
+              {possiblePreferences.map((pref) => (
+                  <li key={pref}>
+                    <label className="flex items-center space-x-2">
+                      <input
+                          type="checkbox"
+                          checked={form.preferences.includes(pref)}
+                          onChange={() => handleTogglePreference(pref)}
+                      />
+                      <span>{pref}</span>
+                    </label>
+                  </li>
+              ))}
+            </ul>
+          </div>
+
+          <button
+              type="submit"
+              className="bg-blue-500 text-white py-2 px-4 rounded w-full"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+            Continue
+          </button>
+        </form>
+      </div>
   );
 }

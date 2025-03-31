@@ -10,42 +10,45 @@ export default function RegisterLoginPage() {
     });
     const [isLogin, setIsLogin] = useState(false);  // Toggle between login and register
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e) => {
         setForm({ ...form, [e.target.name]: e.target.value });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const url = isLogin ? 'http://localhost:5001/api/auth/login' : 'http://localhost:5001/api/auth/register';
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(form),
-        });
+        const url = isLogin
+            ? 'http://localhost:5001/api/auth/login'
+            : 'http://localhost:5001/api/auth/register';
 
-        const data = await res.json();
-        console.log('Response:', data);
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(form),
+            });
 
-        if (res.status === 200 || res.status === 201) {
-            // Store the token (save it in localStorage or cookies)
-            localStorage.setItem('authToken', data.token); // Store token in localStorage
+            const data = await res.json();
+            console.log('Response:', data);
 
-            // Redirect the user to the accessibility preferences page after registration/login
-            window.location.href = '/accessibility-preferences';  // Adjust the path based on your routing setup
-
-            // Reset the form if it's a registration
-            if (!isLogin) {
+            if (res.ok) {
+                // Store the token in localStorage
+                localStorage.setItem('authToken', data.token);
+                alert(`${isLogin ? 'Login' : 'Registration'} successful!`);
+                // Reset form after successful registration/login
                 setForm({
                     name: '',
                     surname: '',
                     email: '',
                     password: '',
                 });
+            } else {
+                alert(`Error: ${data.message}`);
             }
-        } else {
-            alert('Error during registration/login');
+        } catch (error) {
+            console.error('Server error:', error);
+            alert('Server error. Check console.');
         }
     };
 
@@ -62,6 +65,7 @@ export default function RegisterLoginPage() {
                             value={form.name}
                             onChange={handleChange}
                             className="mb-2 p-2 border w-full"
+                            required
                         />
                         <input
                             type="text"
@@ -70,6 +74,7 @@ export default function RegisterLoginPage() {
                             value={form.surname}
                             onChange={handleChange}
                             className="mb-2 p-2 border w-full"
+                            required
                         />
                     </>
                 )}
@@ -80,6 +85,7 @@ export default function RegisterLoginPage() {
                     value={form.email}
                     onChange={handleChange}
                     className="mb-2 p-2 border w-full"
+                    required
                 />
                 <input
                     type="password"
@@ -88,6 +94,7 @@ export default function RegisterLoginPage() {
                     value={form.password}
                     onChange={handleChange}
                     className="mb-4 p-2 border w-full"
+                    required
                 />
                 <button type="submit" className="bg-blue-500 text-white py-2 px-4 rounded w-full">
                     {isLogin ? 'Login' : 'Register'}
