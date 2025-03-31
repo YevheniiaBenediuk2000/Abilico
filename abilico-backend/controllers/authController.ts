@@ -13,7 +13,20 @@ const generateToken = (userId: string) => {
 
 // Registration logic
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
-    const { name, surname, email, password } = req.body;
+    // Destructure new fields from request body
+    const { name, surname, email, password, preferences, disabilityTypes } = req.body;
+
+    // Validate that preferences is an array with at least 3 items
+    if (!Array.isArray(preferences) || preferences.length < 3) {
+        res.status(400).json({ message: 'Please select at least 3 preferences.' });
+        return;
+    }
+
+    // Validate that disabilityTypes is an array with at least one item
+    if (!Array.isArray(disabilityTypes) || disabilityTypes.length < 1) {
+        res.status(400).json({ message: 'Please select at least one disability type.' });
+        return;
+    }
 
     try {
         // Check if user already exists
@@ -23,21 +36,20 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
             return;
         }
 
-        // Hash password
+        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert user
+        // Insert the new user into the database including preferences and disabilityTypes
         const result = await db.query(
-            'INSERT INTO users (name, surname, email, password) VALUES ($1, $2, $3, $4) RETURNING *',
-            [name, surname, email, hashedPassword]
+            'INSERT INTO users (name, surname, email, password, preferences, disability_types) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [name, surname, email, hashedPassword, JSON.stringify(preferences), JSON.stringify(disabilityTypes)]
         );
 
         const user = result.rows[0];
 
-        // Generate JWT token
+        // Generate a JWT token for the new user
         const token = generateToken(user.id);
 
-        // Send response with token and user data
         res.status(201).json({ message: 'Registration successful', token, user });
     } catch (error) {
         console.error(error);
@@ -45,7 +57,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
     }
 };
 
-// Login logic
+// Login logic remains unchanged
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
 
@@ -57,17 +69,13 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         }
 
         const user = existingUser.rows[0];
-        // Compare password with hashed password in DB
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             res.status(400).json({ message: 'Invalid credentials' });
             return;
         }
 
-        // Generate JWT token
         const token = generateToken(user.id);
-
-        // Send response with token and user data
         res.status(200).json({ message: 'Login successful', token, user });
     } catch (error) {
         console.error(error);
