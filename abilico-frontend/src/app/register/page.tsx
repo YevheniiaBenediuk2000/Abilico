@@ -18,15 +18,11 @@ const possibleDisabilities = [
     'Wheelchair User',
     'Visually Impaired',
     'Hearing Impaired',
-    'Cognitive Disability',
     'Other',
 ];
 
-export default function RegisterLoginPage() {
-    // Toggle between login and registration
-    const [isLogin, setIsLogin] = useState(false);
-
-    // State for registration form
+export default function RegisterPage() {
+    // We'll use one state for both login and registration.
     const [form, setForm] = useState({
         name: '',
         surname: '',
@@ -35,24 +31,19 @@ export default function RegisterLoginPage() {
         preferences: [] as string[],
         disabilityTypes: [] as string[],
     });
+    const [isLogin, setIsLogin] = useState(false);
 
-    // State for login form
-    const [loginForm, setLoginForm] = useState({
-        email: '',
-        password: '',
-    });
+    // Password validation for registration
+    const validatePassword = (password: string) => {
+        // At least 8 characters, one uppercase, one lowercase, one digit, one special character.
+        const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^])[A-Za-z\d@$!%*?&#^]{8,}$/;
+        return regex.test(password);
+    };
 
-    // Update registration fields
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm({ ...form, [e.target.name]: e.target.value });
     };
 
-    // Update login fields
-    const handleLoginChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setLoginForm({ ...loginForm, [e.target.name]: e.target.value });
-    };
-
-    // Toggle accessibility preference selection
     const handleTogglePreference = (pref: string) => {
         const { preferences } = form;
         if (preferences.includes(pref)) {
@@ -69,7 +60,6 @@ export default function RegisterLoginPage() {
         }
     };
 
-    // Toggle disability type selection
     const handleToggleDisability = (disability: string) => {
         const { disabilityTypes } = form;
         if (disabilityTypes.includes(disability)) {
@@ -82,26 +72,30 @@ export default function RegisterLoginPage() {
         }
     };
 
-    // Handle form submission
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (isLogin) {
-            // Login submission
+            // Login mode: only require email and password
+            if (!form.email || !form.password) {
+                alert('Please provide both email and password for login.');
+                return;
+            }
+
             try {
                 const response = await fetch('http://localhost:5001/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(loginForm),
+                    // Send only email and password for login
+                    body: JSON.stringify({ email: form.email, password: form.password }),
                 });
                 const data = await response.json();
                 if (response.ok) {
                     alert('Login successful!');
                     console.log('Logged in user:', data.user);
-                    // Optionally store the token
                     localStorage.setItem('authToken', data.token);
-                    // Reset login form
-                    setLoginForm({ email: '', password: '' });
+                    // Optionally clear fields
+                    setForm({ ...form, password: '' });
                 } else {
                     alert(`Login failed: ${data.message || 'Unknown error'}`);
                 }
@@ -110,7 +104,13 @@ export default function RegisterLoginPage() {
                 alert('Server error. Check console.');
             }
         } else {
-            // Registration submission
+            // Registration mode validations
+            if (!validatePassword(form.password)) {
+                alert(
+                    'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one digit, and one special character.'
+                );
+                return;
+            }
             if (form.preferences.length < 3) {
                 alert('Please select at least 3 preferences.');
                 return;
@@ -119,6 +119,7 @@ export default function RegisterLoginPage() {
                 alert('Please select at least one disability type.');
                 return;
             }
+
             try {
                 const response = await fetch('http://localhost:5001/api/auth/register', {
                     method: 'POST',
@@ -129,9 +130,8 @@ export default function RegisterLoginPage() {
                 if (response.ok) {
                     alert('Registration successful!');
                     console.log('Registered user:', data.user);
-                    // Optionally store the token
                     localStorage.setItem('authToken', data.token);
-                    // Clear the registration form
+                    // Clear the registration fields
                     setForm({
                         name: '',
                         surname: '',
@@ -160,8 +160,8 @@ export default function RegisterLoginPage() {
                             type="email"
                             name="email"
                             placeholder="Email"
-                            value={loginForm.email}
-                            onChange={handleLoginChange}
+                            value={form.email}
+                            onChange={handleChange}
                             className="w-full p-2 border rounded"
                             required
                         />
@@ -169,8 +169,8 @@ export default function RegisterLoginPage() {
                             type="password"
                             name="password"
                             placeholder="Password"
-                            value={loginForm.password}
-                            onChange={handleLoginChange}
+                            value={form.password}
+                            onChange={handleChange}
                             className="w-full p-2 border rounded"
                             required
                         />
@@ -264,20 +264,14 @@ export default function RegisterLoginPage() {
                 {isLogin ? (
                     <span>
             Don't have an account?{' '}
-                        <button
-                            onClick={() => setIsLogin(false)}
-                            className="text-blue-500 underline"
-                        >
+                        <button onClick={() => setIsLogin(false)} className="text-blue-500 underline">
               Register
             </button>
           </span>
                 ) : (
                     <span>
             Already have an account?{' '}
-                        <button
-                            onClick={() => setIsLogin(true)}
-                            className="text-blue-500 underline"
-                        >
+                        <button onClick={() => setIsLogin(true)} className="text-blue-500 underline">
               Login
             </button>
           </span>
