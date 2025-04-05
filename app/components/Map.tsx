@@ -8,6 +8,7 @@ import {
   MapContainer,
   Marker,
   Popup,
+  SVGOverlay,
   TileLayer,
   Tooltip,
   useMap,
@@ -53,7 +54,7 @@ function NewMarker() {
   const lat = position?.lat.toFixed(4);
   const lng = position?.lng.toFixed(4);
 
-  const tooltipText = `Obstacle type: ${obstacleType}, latitude: ${lat}, longitude: ${lng}`;
+  const tooltipText = `Obstacle type: ${obstacleType}, latitude: ${lat}, longitude: ${lng}.`;
 
   return (
     position && (
@@ -88,14 +89,15 @@ export default function Map() {
   return (
     <MapContainer
       center={{ lat: 51.505, lng: -0.09 }}
-      zoom={20}
-      style={{ height: "100%", width: "100%" }}
+      zoom={13}
+      style={{ height: "90%", width: "100%" }}
       placeholder={<MapPlaceholder />}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
       <NewMarker />
     </MapContainer>
   );
