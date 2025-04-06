@@ -1,4 +1,20 @@
+.header {
+  position: fixed;
+  z-index: 1000;
+  right: 0;
+  padding: 10px;
+  background-color: #fff;
+}
+
+.header p {
+  margin: 0;
+}
+
+.header p:not(:last-child) {
+  margin-bottom: 10px;
+}
+
 .main {
   width: 100vw;
-  height: 90vh;
+  height: 100vh;
 }

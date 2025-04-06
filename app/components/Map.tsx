@@ -8,19 +8,17 @@ import {
   MapContainer,
   Marker,
   Popup,
-  SVGOverlay,
   TileLayer,
   Tooltip,
-  useMap,
   useMapEvents,
 } from "react-leaflet";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 function NewMarker() {
   const [position, setPosition] = useState<L.LatLng | null>(null);
   const [obstacleType, setObstacleType] = useState("");
   const [draggable, setDraggable] = useState(false);
-  const markerRef = useRef(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
   const eventHandlers = useMemo(
     () => ({
@@ -90,7 +88,7 @@ export default function Map() {
     <MapContainer
       center={{ lat: 51.505, lng: -0.09 }}
       zoom={13}
-      style={{ height: "90%", width: "100%" }}
+      style={{ height: "100%", width: "100%" }}
       placeholder={<MapPlaceholder />}
     >
       <TileLayer
