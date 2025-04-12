@@ -1,4 +1,4 @@
-// "use client";
+"use client";
 
 // import "leaflet/dist/leaflet.css";
 // import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css";
@@ -132,56 +132,6 @@
 
 // // TODO  • Save lat, lng, type to PostgreSQL table obstacles
 
-// import React, { useEffect } from "react";
-// import { MapContainer, TileLayer, useMap } from "react-leaflet";
-// import "leaflet-routing-machine";
-// import L from "leaflet";
-// import "leaflet/dist/leaflet.css";
-
-// const Routing = ({ start, end }) => {
-//   const map = useMap();
-
-//   useEffect(() => {
-//     if (!map) return;
-
-//     // Create a routing control and add it to the map
-//     const routingControl = L.Routing.control({
-//       waypoints: [L.latLng(start.lat, start.lng), L.latLng(end.lat, end.lng)],
-//       routeWhileDragging: true,
-//       lineOptions: {
-//         styles: [{ color: "#6FA1EC", weight: 4 }],
-//       },
-//     }).addTo(map);
-
-//     return () => {
-//       map.removeControl(routingControl);
-//     };
-//   }, [map, start, end]);
-
-//   return null;
-// };
-
-// const Map = (props) => {
-//   const startPoint = { lat: 19.076, lng: 72.8777 }; // Example: Mumbai
-//   const endPoint = { lat: 18.5204, lng: 73.8567 }; // Example: Pune
-
-//   return (
-//     <MapContainer
-//       center={[19.076, 72.8777]}
-//       zoom={7}
-//       style={{ height: "100vh", width: "100%" }}
-//     >
-//       <TileLayer
-//         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-//         attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
-//       />
-//       <Routing start={startPoint} end={endPoint} />
-//     </MapContainer>
-//   );
-// };
-
-// export default Map;
-
 import { useEffect } from "react";
 import L from "leaflet";
 import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
@@ -203,7 +153,10 @@ function Routing() {
       routeWhileDragging: true,
     }).addTo(map);
 
-    return () => map.removeControl(routingControl);
+    return () => {
+      routingControl.getPlan().setWaypoints([]); // Clear pending requests
+      routingControl.remove();
+    };
   }, [map]);
 
   return null;
@@ -213,7 +166,7 @@ import { MapContainer, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 
 export default function Map() {
-  const position = [51.505, -0.09];
+  const position: [number, number] = [51.505, -0.09];
 
   return (
     <MapContainer center={position} zoom={13} style={{ height: "100vh" }}>
