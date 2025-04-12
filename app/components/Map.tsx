@@ -87,7 +87,8 @@ function MapPlaceholder() {
 
 const createRoutineMachineLayer = () => {
   const instance = L.Routing.control({
-    waypoints: [L.latLng(57.74, 11.94), L.latLng(57.6792, 11.949)],
+    waypoints: [L.latLng(57.684, 11.94), L.latLng(57.685, 11.949)],
+    showAlternatives: true,
   });
 
   return instance;
