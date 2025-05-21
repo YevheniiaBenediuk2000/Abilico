@@ -1,0 +1,307 @@
+const EXCLUDED_PROPS = new Set([
+  "boundingbox",
+  "licence",
+  "place_id",
+  "osm_id",
+  "osm_type",
+  "lat",
+  "lon",
+  "icon",
+  "class",
+  "place_rank",
+  "importance",
+  "id",
+  "source",
+]);
+
+const ORS_API_KEY = "5b3ce3597851110001cf624808521bae358447e592780fc0039f7235";
+let map;
+let placeLayer;
+let avoidPolygon = null;
+
+let searchInputValue = "";
+let startInputValue = "";
+
+let selectedMarker = null;
+
+const suggestionsDiv = document.getElementById("suggestions");
+const directions = document.querySelector(".directions");
+const searchInputContainer = document.querySelector(".search-input-container");
+const searchInput = document.getElementById("search-input");
+const detailsPanel = document.getElementById("details-panel");
+const directionsButtonElement = document.createElement("button");
+const searchInputClearBtn = document.getElementById("search-input-clear-btn");
+const startInputClearBtn = document.getElementById("start-input-clear-btn");
+const startInput = document.getElementById("start-input");
+const endInput = document.getElementById("end-input");
+
+async function getRoute(start, end) {
+  const url =
+    "https://api.openrouteservice.org/v2/directions/wheelchair/geojson";
+
+  const requestBody = {
+    coordinates: [start, end],
+    options: { avoid_polygons: avoidPolygon },
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: ORS_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json();
+    console.log("Alternative Route:", data);
+
+    const routeGeometry = data.features[0].geometry; // LineString coordinates
+    // Use your mapping library (e.g., Leaflet/Mapbox) to draw the route
+    console.log("Route Geometry:", routeGeometry);
+
+    return data;
+  } catch (error) {
+    console.error("Routing error:", error);
+  }
+}
+
+async function fetchPlaces(bounds) {
+  const boundingBox = [
+    bounds.getSouth(),
+    bounds.getWest(),
+    bounds.getNorth(),
+    bounds.getEast(),
+  ].join(",");
+
+  const overpassUrl = "https://overpass-api.de/api/interpreter";
+
+  const query = `
+    [out:json][maxsize:1073741824];
+    (
+      node(${boundingBox})["name"];    
+    );
+    out center tags;
+  `;
+
+  try {
+    const response = await fetch(overpassUrl, {
+      method: "POST",
+      body: query,
+    });
+
+    if (!response.ok) throw new Error("Overpass error " + response.status);
+
+    const data = await response.json();
+    console.log("Places data:", data);
+    return osmtogeojson(data);
+  } catch (error) {
+    console.error("Places fetch error:", error);
+  }
+}
+
+async function refreshPlaces() {
+  if (placeLayer) map.removeLayer(placeLayer);
+
+  const geojson = await fetchPlaces(map.getBounds());
+
+  placeLayer = L.geoJSON(geojson, {
+    pointToLayer: (feat, latlng) => {
+      const marker = L.circleMarker(latlng, {
+        fillOpacity: 0.8,
+        radius: 8,
+        weight: 2,
+        color: "purple",
+      });
+
+      const title = feat.properties.name || "Unnamed place";
+      marker.bindPopup(`<strong>${title}</strong>`);
+
+      marker.on("click", async () => {
+        const start = [map.getCenter().lng, map.getCenter().lat]; // or use real user location
+        const end = [latlng.lng, latlng.lat];
+        try {
+          const route = await getRoute(start, end);
+          L.geoJSON(route, { style: { color: "red", weight: 5 } }).addTo(map);
+          console.log({ feat });
+          renderDetails(feat.properties);
+        } catch (e) {
+          console.error(e);
+          alert("Could not fetch route");
+        }
+      });
+      return marker;
+    },
+  }).addTo(map);
+}
+
+const showDirectionsUI = (start) => {
+  console.log("Directions UI:", start);
+  searchInputContainer.style.display = "none";
+  directions.style.display = "block";
+
+  endInput.value = start.display_name;
+
+  startInput.addEventListener("input", (e) => {
+    startInputValue = e.target.value;
+
+    if (startInputValue.trim().length > 0) {
+      startInputClearBtn.classList.add("visible");
+    } else {
+      startInputClearBtn.classList.remove("visible");
+    }
+    const onSuggestionSelect = (end) => {
+      startInput.value = end.display_name;
+    };
+    renderSuggestions(startInputValue, onSuggestionSelect);
+  });
+
+  startInputClearBtn.addEventListener("click", () => {
+    startInput.value = "";
+    startInputValue = "";
+    startInputClearBtn.classList.remove("visible");
+  });
+};
+
+const selectMarker = (result) => {
+  if (selectedMarker) {
+    map.removeLayer(selectedMarker);
+    selectedMarker = null;
+  }
+
+  const title = result.name || "Unnamed place";
+
+  selectedMarker = L.circleMarker([result.lat, result.lon])
+    .bindPopup(`<strong>${title}</strong>`)
+    .addTo(map)
+    .openPopup();
+};
+
+const renderDetails = (result) => {
+  detailsPanel.innerHTML = "";
+  detailsPanel.style.display = "block";
+  Object.entries(result).forEach(([key, value]) => {
+    if (!EXCLUDED_PROPS.has(key)) {
+      const div = document.createElement("div");
+      div.className = "detail-item";
+
+      // Format the key for display
+      let displayKey = key;
+      if (key === "display_name") {
+        displayKey = "Address";
+      } else {
+        // Replace underscores with spaces and capitalize first letters
+        displayKey = key
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
+
+      div.innerHTML = `<strong>${displayKey}:</strong> ${value}`;
+      detailsPanel.appendChild(div);
+    }
+  });
+
+  directionsButtonElement.innerHTML = "";
+  directionsButtonElement.className = "directions-button";
+  directionsButtonElement.textContent = "Directions";
+  directionsButtonElement.onclick = () => showDirectionsUI(result);
+  detailsPanel.appendChild(directionsButtonElement);
+};
+
+const renderSuggestions = async (query, onSuggestionSelect) => {
+  if (!query) {
+    suggestionsDiv.style.display = "none";
+    return;
+  }
+
+  const data = await fetchSuggestions(query);
+
+  suggestionsDiv.innerHTML = "";
+  data.forEach((result) => {
+    const div = document.createElement("div");
+    div.className = "suggestion-item";
+    div.textContent = result.display_name;
+    div.onclick = () => {
+      map.setView([result.lat, result.lon], 16);
+      suggestionsDiv.style.display = "none";
+      selectMarker(result);
+      onSuggestionSelect(result);
+    };
+    suggestionsDiv.appendChild(div);
+  });
+  suggestionsDiv.style.display = "block";
+};
+
+const handleDOMContentLoaded = () => {
+  map = L.map("map").setView([49.41461, 8.681495], 16);
+  const attribution = "© OpenStreetMap contributors";
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution,
+  }).addTo(map);
+
+  const obstacle = turf.point([8.681495, 49.41461]);
+  const bufferedObstacle = turf.buffer(obstacle, 0.01, {
+    units: "kilometers",
+  });
+
+  L.geoJSON(bufferedObstacle)
+    .addTo(map)
+    .bindPopup("Obstacle (Stairs)")
+    .openPopup();
+
+  avoidPolygon = bufferedObstacle.geometry;
+
+  const start = [8.6818, 49.4141]; // [lng, lat]
+  const end = [8.6872, 49.4203]; // [lng, lat]
+
+  getRoute(start, end).then((routeData) => {
+    L.geoJSON(routeData, {
+      style: { color: "red", weight: 5 },
+    }).addTo(map);
+
+    L.marker([start[1], start[0]])
+      .addTo(map) // Convert to [lat, lng]
+      .bindPopup("Start Point");
+
+    L.marker([end[1], end[0]])
+      .addTo(map) // Convert to [lat, lng]
+      .bindPopup("End Point");
+  });
+
+  refreshPlaces();
+  map.on("moveend", () => refreshPlaces());
+
+  searchInput.addEventListener("input", (e) => {
+    searchInputValue = e.target.value;
+
+    if (searchInputValue.trim().length > 0) {
+      searchInputClearBtn.classList.add("visible");
+    } else {
+      searchInputClearBtn.classList.remove("visible");
+    }
+    renderSuggestions(searchInputValue, renderDetails);
+  });
+
+  searchInputClearBtn.addEventListener("click", () => {
+    searchInput.value = "";
+    searchInputValue = "";
+    searchInputClearBtn.classList.remove("visible");
+    suggestionsDiv.style.display = "none";
+    searchInput.focus();
+
+    document.getElementById("details-panel").style.display = "none";
+    if (selectedMarker) {
+      map.removeLayer(selectedMarker);
+      selectedMarker = null;
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".search-input-container")) {
+      suggestionsDiv.style.display = "none";
+    }
+  });
+};
+
+addEventListener("DOMContentLoaded", handleDOMContentLoaded);
