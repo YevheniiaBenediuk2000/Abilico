@@ -45,6 +45,11 @@ import {
   osm,
 } from "./leaflet-controls/BasemapGallery.mjs";
 import { detailsPanel } from "./utils/commonVariables.mjs";
+import {
+  renderPhotosGrid,
+  resolvePlacePhotos,
+  showMainPhoto,
+} from "./modules/fetchPhotos.mjs";
 
 import { makePoiIcon } from "./icons/makePoiIcon.mjs";
 
@@ -449,6 +454,22 @@ const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
 
   moveDepartureSearchBarUnderTo();
   mountInOffcanvas(titleText);
+
+  // --- Photos ---
+  try {
+    const keyPhotos = showLoading("photos-load");
+    const photos = await resolvePlacePhotos(tags, latlng);
+
+    // Main + rest
+    showMainPhoto(photos[0]);
+    renderPhotosGrid(photos);
+
+    hideLoading(keyPhotos);
+  } catch (err) {
+    console.warn("Photo resolution failed", err);
+    showMainPhoto(null);
+    renderPhotosGrid([]);
+  }
 
   const key = showLoading("reviews-load");
 
