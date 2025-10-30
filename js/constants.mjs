@@ -46,3 +46,11 @@ export const placeClusterConfig = {
   // disableClusteringAtZoom: 14,
   spiderfyOnMaxZoom: true,
 };
+
+export const BADGE_COLOR_BY_TIER = {
+  designated: "#22c55e", // green
+  yes:        "#16a34a", // green (darker)
+  limited:    "#f59e0b", // amber
+  unknown:    "#94a3b8", // slate
+  no:         "#ef4444", // red
+};
