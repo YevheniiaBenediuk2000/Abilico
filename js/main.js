@@ -686,8 +686,8 @@ if (navigator.geolocation) {
         });
       }
 
-      // const defaultLatLng = [50.4501, 30.5234]; // Kyiv, Ukraine
-      const defaultLatLng = [51.5074, -0.1278]; // London, UK
+      const defaultLatLng = [50.4501, 30.5234]; // Kyiv, Ukraine
+      // const defaultLatLng = [51.5074, -0.1278]; // London, UK
       map.setView(defaultLatLng, DEFAULT_ZOOM);
     }
   );

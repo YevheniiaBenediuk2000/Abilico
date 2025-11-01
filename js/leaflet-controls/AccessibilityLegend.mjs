@@ -20,18 +20,18 @@ export const AccessibilityLegend = L.Control.extend({
       "accessibility-legend"
     );
 
-    const tooltipTriggerList = accessibilityLegendEl.querySelectorAll(
-      '[data-bs-toggle="tooltip"]'
-    );
-    tooltipTriggerList.forEach((tooltipTriggerEl) => {
-      tooltipTriggerEl.style.width = `${
-        SIZE_BY_TIER[idToTier.get(tooltipTriggerEl.htmlFor)]
-      }px`;
-      tooltipTriggerEl.style.height = `${
-        SIZE_BY_TIER[idToTier.get(tooltipTriggerEl.htmlFor)]
-      }px`;
+    const labels = accessibilityLegendEl.querySelectorAll('[data-bs-toggle="tooltip"]');
+
+    labels.forEach((labelEl) => {
       const tier = idToTier.get(labelEl.htmlFor);
-      labelEl.style.background = BADGE_COLOR_BY_TIER[tier] || BADGE_COLOR_BY_TIER.unknown;
+      const px = SIZE_BY_TIER[tier];
+
+      labelEl.style.width = `${px}px`;
+      labelEl.style.height = `${px}px`;
+      labelEl.style.backgroundColor =
+          BADGE_COLOR_BY_TIER[tier] ?? BADGE_COLOR_BY_TIER.unknown;
+
+      new bootstrap.Tooltip(labelEl);
     });
 
     div.append(accessibilityLegendEl);
