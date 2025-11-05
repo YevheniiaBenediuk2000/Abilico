@@ -1,4 +1,4 @@
-import { SIZE_BY_TIER } from "../constants.mjs";
+import { SIZE_BY_TIER } from "../constants/configs.mjs";
 import { ls } from "../utils/localStorage.mjs";
 import { BADGE_COLOR_BY_TIER } from "../constants.mjs";
 

@@ -13,12 +13,11 @@ import { fetchRoute } from "./api/fetchRoute.js";
 import { reviewStorage } from "./api/reviewStorage.js";
 import { obstacleStorage } from "./api/obstacleStorage.js";
 import {
-  BASE_PATH,
   DEFAULT_ZOOM,
   EXCLUDED_PROPS,
   SIZE_BY_TIER,
-  placeClusterConfig,
-} from "./constants.mjs";
+  PLACE_CLUSTER_CONFIG,
+} from "./constants/configs.mjs";
 import { toastError, toastWarn } from "./utils/toast.mjs";
 import { waypointDivIcon, WP_COLORS } from "./utils/wayPoints.mjs";
 import {
@@ -44,16 +43,26 @@ import {
   BasemapGallery,
   osm,
 } from "./leaflet-controls/BasemapGallery.mjs";
-import { detailsPanel } from "./utils/commonVariables.mjs";
+import elements from "./constants/domElements.mjs";
 import {
   renderPhotosGrid,
   resolvePlacePhotos,
   showMainPhoto,
 } from "./modules/fetchPhotos.mjs";
+import {
+  cleanUrl,
+  hostLabel,
+  linkLabel,
+  normalizeTagsCase,
+  splitMulti,
+  toMapillaryViewerUrl,
+} from "./modules/beautifyDetailLinks.mjs";
+import { recomputePlaceAccessibilityKeywords } from "./modules/accessibilityKeywordsExtraction.mjs";
+import globals from "./constants/globalVariables.mjs";
+
+const offcanvasInstance = new bootstrap.Offcanvas(elements.offcanvasEl);
 
 import { makePoiIcon } from "./icons/makePoiIcon.mjs";
-
-const detailsCtx = { latlng: null, placeId: null };
 
 let accessibilityFilter = new Set();
 
@@ -89,12 +98,12 @@ function showQuickRoutePopup(latlng) {
   startBtn.addEventListener("click", async (ev) => {
     L.DomEvent.stop(ev);
     try {
-      directionsUi.classList.remove("d-none");
+      elements.directionsUi.classList.remove("d-none");
       moveDepartureSearchBarUnderTo();
       mountInOffcanvas("Directions");
 
       await setFrom(latlng, null, { fit: false });
-      destinationSearchInput.focus();
+      elements.destinationSearchInput.focus();
     } finally {
       map.closePopup(clickPopup);
     }
@@ -103,42 +112,26 @@ function showQuickRoutePopup(latlng) {
   goBtn.addEventListener("click", async (ev) => {
     L.DomEvent.stop(ev);
     try {
-      directionsUi.classList.remove("d-none");
+      elements.directionsUi.classList.remove("d-none");
       moveDepartureSearchBarUnderTo();
       mountInOffcanvas("Directions");
 
       await setTo(latlng, null, { fit: false });
-      departureSearchInput.focus();
+      elements.departureSearchInput.focus();
     } finally {
       map.closePopup(clickPopup);
     }
   });
 }
 
-const directionsUi = document.getElementById("directions-ui");
-
 let selectedPlaceLayer = null;
 let placesPane;
 
-const placeClusterLayer = L.markerClusterGroup(placeClusterConfig);
+const placeClusterLayer = L.markerClusterGroup(PLACE_CLUSTER_CONFIG);
 
 // Track when Leaflet.Draw is in editing/deleting mode
 const drawState = { editing: false, deleting: false };
 let drawControl = null;
-
-// ===== OMNIBOX STATE =====
-const destinationSearchBar = document.getElementById("destination-search-bar");
-const destinationSearchBarHome = destinationSearchBar.parentElement;
-const destinationSearchInput = document.getElementById(
-  "destination-search-input"
-);
-const destinationSuggestionsEl = document.getElementById(
-  "destination-suggestions"
-);
-
-const departureSearchBar = document.getElementById("departure-search-bar");
-const departureSearchInput = document.getElementById("departure-search-input");
-const departureSuggestionsEl = document.getElementById("departure-suggestions");
 
 let fromLatLng = null;
 let toLatLng = null;
@@ -150,26 +143,16 @@ const drawnItems = new L.FeatureGroup();
 let drawHelpAlertControl = null;
 
 let obstacleFeatures = [];
-let reviews = [];
-
-const reviewForm = detailsPanel.querySelector("#review-form");
-const reviewsListEl = detailsPanel.querySelector("#reviews-list");
-const submitReviewBtn = detailsPanel.querySelector("#submit-review-btn");
-
-// ----- Offcanvas integration -----
-const offcanvasEl = document.getElementById("placeOffcanvas");
-const offcanvasTitleEl = document.getElementById("placeOffcanvasLabel");
-const offcanvasInstance = new bootstrap.Offcanvas(offcanvasEl);
 
 /** Mount search bar + details panel into the Offcanvas and open it. */
 function mountInOffcanvas(titleText) {
-  offcanvasTitleEl.textContent = titleText;
+  elements.offcanvasTitle.textContent = titleText;
   offcanvasInstance.show();
 }
 
-offcanvasEl.addEventListener("hidden.bs.offcanvas", () => {
-  destinationSearchBarHome.prepend(destinationSearchBar);
-  destinationSearchBar.classList.remove("d-none");
+elements.offcanvasEl.addEventListener("hidden.bs.offcanvas", () => {
+  elements.destinationSearchBarHome.prepend(elements.destinationSearchBar);
+  elements.destinationSearchBar.classList.remove("d-none");
 });
 
 // ---------- Bootstrap Modal + Tooltip helpers ----------
@@ -177,16 +160,16 @@ let obstacleModalInstance = null;
 let obstacleForm, obstacleTitleInput;
 
 function toggleDepartureSuggestions(visible) {
-  departureSuggestionsEl.classList.toggle("d-none", !visible);
-  departureSearchInput.setAttribute(
+  elements.departureSuggestions.classList.toggle("d-none", !visible);
+  elements.departureSearchInput.setAttribute(
     "aria-expanded",
     visible ? "true" : "false"
   );
 }
 
 function toggleDestinationSuggestions(visible) {
-  destinationSuggestionsEl.classList.toggle("d-none", !visible);
-  destinationSearchInput.setAttribute(
+  elements.destinationSuggestions.classList.toggle("d-none", !visible);
+  elements.destinationSearchInput.setAttribute(
     "aria-expanded",
     visible ? "true" : "false"
   );
@@ -355,19 +338,19 @@ async function refreshPlaces() {
           pane: "places-pane",
           icon: makePoiIcon(tags), // <-- fixed 33px badge
         })
-            .on("click", () => {
-              renderDetails(tags, latlng, { keepDirectionsUi: true });
-            })
-            .on("add", () => {
-              const title = tags.name ?? tags.amenity ?? "Unnamed place";
-              attachBootstrapTooltip(marker, title);
-            })
-            .on("remove", () => {
-              if (marker._bsTooltip) {
-                marker._bsTooltip.dispose();
-                marker._bsTooltip = null;
-              }
-            });
+          .on("click", () => {
+            renderDetails(tags, latlng, { keepDirectionsUi: true });
+          })
+          .on("add", () => {
+            const title = tags.name ?? tags.amenity ?? "Unnamed place";
+            attachBootstrapTooltip(marker, title);
+          })
+          .on("remove", () => {
+            if (marker._bsTooltip) {
+              marker._bsTooltip.dispose();
+              marker._bsTooltip = null;
+            }
+          });
 
         return marker;
       },
@@ -379,77 +362,191 @@ async function refreshPlaces() {
 }
 
 function moveDepartureSearchBarUnderTo() {
-  const toLabel = directionsUi.querySelector(
+  const toLabel = elements.directionsUi.querySelector(
     'label[for="destination-search-input"]'
   );
-  toLabel.insertAdjacentElement("afterend", destinationSearchBar);
+  toLabel.insertAdjacentElement("afterend", elements.destinationSearchBar);
 }
 
 const renderOneReview = (text) => {
   const li = document.createElement("li");
   li.className = "list-group-item text-wrap";
-  li.innerHTML = text;
-  reviewsListEl.appendChild(li);
+  li.innerHTML = `${text}<div class="mt-1 d-flex flex-wrap gap-1 review-badges"></div>`;
+  elements.reviewsList.appendChild(li);
 };
 
 const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
   const titleText = tags.name || tags.amenity || "Details";
 
-  detailsPanel.classList.remove("d-none");
-  const list = detailsPanel.querySelector("#details-list");
+  elements.detailsPanel.classList.remove("d-none");
+  const list = elements.detailsPanel.querySelector("#details-list");
   list.innerHTML = "";
 
-  Object.entries(tags).forEach(([key, value]) => {
+  const nTags = normalizeTagsCase(tags);
+
+  // WEBSITE (single merged block)
+  const websiteLinks = splitMulti(nTags.website || "")
+    .map(cleanUrl)
+    .filter(Boolean);
+  if (websiteLinks.length) {
+    const item = document.createElement("div");
+    item.className =
+      "list-group-item d-flex justify-content-between align-items-start";
+    const links = websiteLinks
+      .map(
+        (u) =>
+          `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${linkLabel(
+            u
+          )}</a>`
+      )
+      .join(" · ");
+    item.innerHTML = `<div class="me-2"><h6 class="mb-1 fw-semibold">Website</h6><p class="small mb-1">${links}</p></div>`;
+    list.appendChild(item);
+  }
+
+  Object.entries(nTags).forEach(([key, value]) => {
+    const isWebsiteVariant =
+      /^(website|url)(?::\d+)?$/i.test(key) || /^contact:website$/i.test(key);
+    if (isWebsiteVariant) return;
+
     const containsAltName = /alt\s*name/i.test(key);
     const containsLocalizedVariants =
-      /^(name|alt_name|short_name|display_name):/.test(key.toLowerCase());
+      /^(name|alt_name|short_name|display_name):/i.test(key);
     const isCountryKey = /^country$/i.test(key);
+    const isWikiDataKey = /^wikidata(?::[a-z-]+)?$/i.test(key);
 
     const isExcluded =
       EXCLUDED_PROPS.has(key) ||
       containsAltName ||
       containsLocalizedVariants ||
-      isCountryKey;
+      isCountryKey ||
+      isWikiDataKey;
 
-    if (!isExcluded) {
-      const item = document.createElement("div");
-      item.className =
-        "list-group-item d-flex justify-content-between align-items-start";
+    if (isExcluded) return;
 
-      // Format the key for display
-      let displayKey = null;
-      if (key === "display_name") {
-        displayKey = "Address";
-      } else {
-        // Replace underscores with spaces and capitalize first letters
-        displayKey = key
-          .replace(/^Addr_?/i, "")
-          .replace(/[_:]/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase());
-      }
+    const lk = key.toLowerCase();
+    const item = document.createElement("div");
+    item.className =
+      "list-group-item d-flex justify-content-between align-items-start";
 
-      const displayValue = value
-        .replace(/[_:]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+    // Special cases: linkify
+    if (lk === "website" || lk === "url") {
+      const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+      if (!urls.length) return;
+
+      const links = urls
+        .map(
+          (u) =>
+            `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+              u
+            )}</a>`
+        )
+        .join(" · ");
 
       item.innerHTML = `
-        <div class="me-2">
-          <h6 class="mb-1 fw-semibold">${displayKey}</h6>
-          <p class="small mb-1">${displayValue}</p>
-        </div>
-      `;
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Website</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
       list.appendChild(item);
+      return;
     }
+
+    if (lk === "image") {
+      const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+      if (!urls.length) return;
+
+      const links = urls
+        .map((u) => {
+          // If someone put a Mapillary URL in image=, route it to the viewer
+          if (/mapillary\.com/i.test(u)) {
+            const viewer = toMapillaryViewerUrl(u);
+            return `<a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Mapillary</a>`;
+          }
+          // Google Photos shares are pages, not direct images; still useful
+          if (/photos\.app\.goo\.gl|photos\.google\.com/i.test(u)) {
+            return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">Google Photos</a>`;
+          }
+          // Fallback: show host
+          return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+            u
+          )}</a>`;
+        })
+        .join(" · ");
+
+      item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Photo Link(s)</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
+      list.appendChild(item);
+      return;
+    }
+
+    if (lk === "mapillary") {
+      const viewer = toMapillaryViewerUrl(value);
+      if (!viewer) return;
+      item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Street Imagery</h6>
+        <p class="small mb-1">
+          <a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Open in Mapillary</a>
+        </p>
+      </div>`;
+      list.appendChild(item);
+      return;
+    }
+
+    if (lk === "wikipedia" || /^wikipedia:[a-z-]+$/i.test(lk)) {
+      const spec = lk === "wikipedia" ? value : `${lk.split(":")[1]}:${value}`;
+      const m = String(spec).match(/^([a-z-]+)\s*:\s*(.+)$/i);
+      if (m) {
+        const lang = m[1];
+        const title = m[2].replace(/\s/g, "_");
+        const href = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(
+          title
+        )}`;
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Wikipedia</h6>
+        <p class="small mb-1"><a href="${href}" target="_blank" rel="noopener">Wikipedia (${lang})</a></p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+    }
+
+    // Default rendering (your original behavior)
+    let displayKey = null;
+    if (key === "display_name") {
+      displayKey = "Address";
+    } else {
+      displayKey = key
+        .replace(/^Addr_?/i, "")
+        .replace(/[_:]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    const displayValue = String(value)
+      .replace(/[_:]/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    item.innerHTML = `
+    <div class="me-2">
+      <h6 class="mb-1 fw-semibold">${displayKey}</h6>
+      <p class="small mb-1">${displayValue}</p>
+    </div>`;
+    list.appendChild(item);
   });
 
-  detailsCtx.latlng = latlng;
-  detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
+  globals.detailsCtx.latlng = latlng;
+  globals.detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
 
   // Add Reviews Section
-  reviewsListEl.innerHTML = "";
+  elements.reviewsList.innerHTML = "";
 
   if (!keepDirectionsUi) {
-    directionsUi.classList.add("d-none");
+    elements.directionsUi.classList.add("d-none");
   }
 
   moveDepartureSearchBarUnderTo();
@@ -474,16 +571,21 @@ const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
   const key = showLoading("reviews-load");
 
   try {
-    reviews = await reviewStorage();
+    globals.reviews = await reviewStorage();
   } finally {
     hideLoading(key);
   }
 
-  reviews.forEach((r) => {
-    if (detailsCtx.placeId && detailsCtx.placeId === r.placeId) {
+  globals.reviews.forEach((r) => {
+    if (
+      globals.detailsCtx.placeId &&
+      globals.detailsCtx.placeId === r.placeId
+    ) {
       renderOneReview(r.text);
     }
   });
+
+  recomputePlaceAccessibilityKeywords().catch(console.error);
 };
 
 function makeCircleFeature(layer) {
@@ -743,7 +845,7 @@ map.whenReady(async () => {
 });
 
 function renderDepartureSuggestions(items) {
-  departureSuggestionsEl.innerHTML = "";
+  elements.departureSuggestions.innerHTML = "";
   if (!items || !items.length) {
     toggleDepartureSuggestions(false);
     return;
@@ -759,13 +861,13 @@ function renderDepartureSuggestions(items) {
     btn.textContent = res.name;
     btn.addEventListener("click", () => selectDepartureSuggestion(items[idx]));
     li.appendChild(btn);
-    departureSuggestionsEl.appendChild(li);
+    elements.departureSuggestions.appendChild(li);
   });
   toggleDepartureSuggestions(true);
 }
 
 function renderDestinationSuggestions(items) {
-  destinationSuggestionsEl.innerHTML = "";
+  elements.destinationSuggestions.innerHTML = "";
   if (!items || !items.length) {
     toggleDestinationSuggestions(false);
     return;
@@ -783,7 +885,7 @@ function renderDestinationSuggestions(items) {
       selectDestinationSuggestion(items[idx])
     );
     li.appendChild(btn);
-    destinationSuggestionsEl.appendChild(li);
+    elements.destinationSuggestions.appendChild(li);
   });
   toggleDestinationSuggestions(true);
 }
@@ -853,16 +955,17 @@ async function setFrom(latlng, text, opts = {}) {
   }).addTo(map);
   attachDraggable(fromMarker, async (ll) => {
     fromLatLng = ll;
-    departureSearchInput.value = await reverseAddressAt(ll);
+    elements.departureSearchInput.value = await reverseAddressAt(ll);
     updateRoute({ fit: false });
   });
-  departureSearchInput.value = text ?? (await reverseAddressAt(latlng));
+  elements.departureSearchInput.value =
+    text ?? (await reverseAddressAt(latlng));
   updateRoute(opts);
 }
 
 async function setTo(latlng, text, opts = {}) {
   toLatLng = latlng;
-  const directionsActive = !directionsUi.classList.contains("d-none");
+  const directionsActive = !elements.directionsUi.classList.contains("d-none");
   if (directionsActive) {
     if (toMarker) map.removeLayer(toMarker);
     toMarker = L.marker(latlng, {
@@ -871,12 +974,13 @@ async function setTo(latlng, text, opts = {}) {
     }).addTo(map);
     attachDraggable(toMarker, async (ll) => {
       toLatLng = ll;
-      destinationSearchInput.value = await reverseAddressAt(ll);
+      elements.destinationSearchInput.value = await reverseAddressAt(ll);
       updateRoute({ fit: false });
     });
   }
 
-  destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
+  elements.destinationSearchInput.value =
+    text ?? (await reverseAddressAt(latlng));
   updateRoute(opts);
 }
 
@@ -893,7 +997,7 @@ async function selectDestinationSuggestion(res) {
   }
 
   showDetailsLoading(
-    detailsPanel,
+    elements.detailsPanel,
     res.name ?? "Details",
     moveDepartureSearchBarUnderTo,
     mountInOffcanvas
@@ -947,15 +1051,15 @@ async function selectDestinationSuggestion(res) {
 }
 
 // Also hide on Escape
-departureSearchInput.addEventListener("keydown", (e) => {
+elements.departureSearchInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") toggleDepartureSuggestions(false);
 });
-destinationSearchInput.addEventListener("keydown", (e) => {
+elements.destinationSearchInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") toggleDestinationSuggestions(false);
 });
 
 let destinationGeocodeReqSeq = 0;
-destinationSearchInput.addEventListener(
+elements.destinationSearchInput.addEventListener(
   "input",
   debounce((e) => {
     const searchQuery = e.target.value.trim();
@@ -966,7 +1070,7 @@ destinationSearchInput.addEventListener(
     }
 
     const mySeq = ++destinationGeocodeReqSeq;
-    showListSpinner(destinationSuggestionsEl, "Searching…");
+    showListSpinner(elements.destinationSuggestions, "Searching…");
 
     geocoder.geocode(searchQuery, (items) => {
       if (mySeq !== destinationGeocodeReqSeq) return;
@@ -974,15 +1078,15 @@ destinationSearchInput.addEventListener(
       renderDestinationSuggestions(items);
 
       if (!items?.length) {
-        destinationSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-        destinationSuggestionsEl.classList.remove("d-none");
+        elements.destinationSuggestions.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
+        elements.destinationSuggestions.classList.remove("d-none");
       }
     });
   }, 200)
 );
 
 let departureGeocodeReqSeq = 0;
-departureSearchInput.addEventListener(
+elements.departureSearchInput.addEventListener(
   "input",
   debounce((e) => {
     const searchQuery = e.target.value.trim();
@@ -991,25 +1095,25 @@ departureSearchInput.addEventListener(
       return;
     }
     const mySeq = ++departureGeocodeReqSeq;
-    showListSpinner(departureSuggestionsEl, "Searching…");
+    showListSpinner(elements.departureSuggestions, "Searching…");
 
     geocoder.geocode(searchQuery, (items) => {
       if (mySeq !== departureGeocodeReqSeq) return;
       renderDepartureSuggestions(items);
       if (!items?.length) {
-        departureSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-        departureSuggestionsEl.classList.remove("d-none");
+        elements.departureSuggestions.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
+        elements.departureSuggestions.classList.remove("d-none");
       }
     });
   }, 200)
 );
 
 const hideSuggestionsIfClickedOutside = (e) => {
-  if (!departureSearchBar.contains(e.target)) {
+  if (!elements.departureSearchBar.contains(e.target)) {
     toggleDepartureSuggestions(false);
   }
 
-  if (!destinationSearchBar.contains(e.target)) {
+  if (!elements.destinationSearchBar.contains(e.target)) {
     toggleDestinationSuggestions(false);
   }
 };
@@ -1023,42 +1127,44 @@ document.addEventListener("accessibilityFilterChanged", (e) => {
   refreshPlaces();
 });
 
-detailsPanel
+elements.detailsPanel
   .querySelector("#btn-start-here")
   .addEventListener("click", async () => {
-    directionsUi.classList.remove("d-none");
+    elements.directionsUi.classList.remove("d-none");
     mountInOffcanvas("Directions");
-    await setFrom(detailsCtx.latlng);
-    destinationSearchInput.focus();
+    await setFrom(globals.detailsCtx.latlng);
+    elements.destinationSearchInput.focus();
   });
 
-detailsPanel
+elements.detailsPanel
   .querySelector("#btn-go-here")
   .addEventListener("click", async () => {
-    directionsUi.classList.remove("d-none");
+    elements.directionsUi.classList.remove("d-none");
     mountInOffcanvas("Directions");
-    await setTo(detailsCtx.latlng);
-    departureSearchInput.focus();
+    await setTo(globals.detailsCtx.latlng);
+    elements.departureSearchInput.focus();
   });
 
-reviewForm.addEventListener("submit", async (e) => {
+elements.reviewForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const textarea = reviewForm.querySelector("#review-text");
+  const textarea = elements.reviewForm.querySelector("#review-text");
   const text = textarea.value.trim();
   if (!text) return;
 
-  const newReview = { text, placeId: detailsCtx.placeId };
-  reviews.push(newReview);
+  const newReview = { text, placeId: globals.detailsCtx.placeId };
+  globals.reviews.push(newReview);
 
   try {
     await withButtonLoading(
-      submitReviewBtn,
-      reviewStorage("PUT", reviews),
+      elements.submitReviewBtn,
+      reviewStorage("PUT", globals.reviews),
       "Saving…"
     );
 
-    renderOneReview(reviews[reviews.length - 1].text);
+    renderOneReview(globals.reviews[globals.reviews.length - 1].text);
     textarea.value = "";
+
+    recomputePlaceAccessibilityKeywords().catch(console.error);
   } catch (error) {
     console.error(error);
     toastError("Could not save your review. Please try again.");
