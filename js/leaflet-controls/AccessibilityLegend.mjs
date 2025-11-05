@@ -1,6 +1,6 @@
 import { SIZE_BY_TIER } from "../constants/configs.mjs";
 import { ls } from "../utils/localStorage.mjs";
-import { BADGE_COLOR_BY_TIER } from "../constants.mjs";
+import { BADGE_COLOR_BY_TIER } from "../constants/configs.mjs";
 
 export const ACCESSIBILITY_FILTER_LS_KEY = "ui.placeAccessibility.filter";
 
@@ -20,7 +20,9 @@ export const AccessibilityLegend = L.Control.extend({
       "accessibility-legend"
     );
 
-    const labels = accessibilityLegendEl.querySelectorAll('[data-bs-toggle="tooltip"]');
+    const labels = accessibilityLegendEl.querySelectorAll(
+      '[data-bs-toggle="tooltip"]'
+    );
 
     labels.forEach((labelEl) => {
       const tier = idToTier.get(labelEl.htmlFor);
@@ -29,7 +31,7 @@ export const AccessibilityLegend = L.Control.extend({
       labelEl.style.width = `${px}px`;
       labelEl.style.height = `${px}px`;
       labelEl.style.backgroundColor =
-          BADGE_COLOR_BY_TIER[tier] ?? BADGE_COLOR_BY_TIER.unknown;
+        BADGE_COLOR_BY_TIER[tier] ?? BADGE_COLOR_BY_TIER.unknown;
 
       new bootstrap.Tooltip(labelEl);
     });
