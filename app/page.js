@@ -87,6 +87,8 @@ export default function MapContainer() {
                                 className="list-group w-100 shadow d-none search-suggestions"
                             ></ul>
                         </div>
+                        {/* 👇 Add this block */}
+                        <label htmlFor="destination-search-input">To</label>
                     </div>
 
                     {/* === Details Panel === */}
@@ -124,7 +126,7 @@ export default function MapContainer() {
             {/* === Obstacle Modal === */}
             <div className="modal fade" id="obstacleModal" tabIndex="-1" aria-hidden="true">
                 <div className="modal-dialog">
-                    <form className="modal-content" id="obstacle-form">
+                <form className="modal-content" id="obstacle-form">
                         <div className="modal-header">
                             <h5 className="modal-title">Obstacle details</h5>
                             <button

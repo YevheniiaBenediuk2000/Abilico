@@ -357,7 +357,7 @@ async function refreshPlaces() {
         const placesLayer = L.geoJSON(geojson, {
             pointToLayer: (feature, latlng) => {
                 const tags = feature.properties.tags || feature.properties;
-                console.log("POI tags sample:", tags);
+                // console.log("POI tags sample:", tags);
 
                 const marker = L.marker(latlng, {
                     pane: "places-pane",
@@ -386,12 +386,18 @@ async function refreshPlaces() {
     }
 }
 
-function moveDepartureSearchBarUnderTo() {
-    const toLabel = directionsUi.querySelector(
-        'label[for="destination-search-input"]'
-    );
-    toLabel.insertAdjacentElement("afterend", destinationSearchBar);
-}
+    function moveDepartureSearchBarUnderTo() {
+        const toLabel = directionsUi?.querySelector?.(
+            'label[for="destination-search-input"]'
+        );
+
+        if (!toLabel) {
+            console.warn("⚠️ moveDepartureSearchBarUnderTo: label not found");
+            return;
+        }
+
+        toLabel.insertAdjacentElement("afterend", destinationSearchBar);
+    }
 
 const renderOneReview = (text) => {
     const li = document.createElement("li");

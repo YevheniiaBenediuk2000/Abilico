@@ -28,6 +28,7 @@ export async function fetchPlaceGeometry(osmType, osmId) {
   let lastError = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
         const response = await fetch(endpoint, {
@@ -35,15 +36,18 @@ export async function fetchPlaceGeometry(osmType, osmId) {
           body: query,
           signal,
         });
-        if (!response.ok)
-          throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
-        const data = await response.json();
 
-        // Convert Overpass JSON to GeoJSON (FeatureCollection)
+        if (!response.ok) {
+          throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
+        }
+
+        const data = await response.json();
         return osmtogeojson(data);
       }, pRetryConfig);
     } catch (error) {
       if (error?.name === "AbortError") {
+        console.log("⚠️ fetchPlaces aborted safely");
+        // return empty FeatureCollection instead of undefined
         return { type: "FeatureCollection", features: [] };
       }
 
@@ -104,7 +108,8 @@ export async function fetchPlace(osmType, osmId) {
   }
 
   if (lastError?.name === "AbortError") {
-    return {};
+    console.log("⚠️ fetchPlaces aborted at end safely");
+    return { type: "FeatureCollection", features: [] };
   }
 
   console.error("Place fetch failed on all Overpass endpoints:", lastError);
@@ -326,7 +331,7 @@ export async function fetchPlaces(bounds, zoom, options) {
     console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
-        console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
+        // console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
         const response = await fetch(endpoint, {
           method: "POST",
           body: query,
