@@ -1,5 +1,6 @@
 import pRetry from "p-retry";
 import { pRetryConfig, SHOW_PLACES_ZOOM } from "../constants.mjs";
+import osmtogeojson from "osmtogeojson";
 
 const OVERPASS_ENDPOINTS = [
   "https://overpass.osm.jp/api/interpreter",
@@ -256,6 +257,8 @@ let placesAbortController = null;
 export async function fetchPlaces(bounds, zoom, options) {
   const { accessibilityFilter } = options;
 
+  console.log("🚀 fetchPlaces called", { bounds, zoom, accessibilityFilter });
+
   const showNoPlaces = zoom < SHOW_PLACES_ZOOM;
   if (showNoPlaces) {
     return { type: "FeatureCollection", features: [] };
@@ -307,7 +310,7 @@ export async function fetchPlaces(bounds, zoom, options) {
   }
 
   const outLimit = limitForZoom(zoom);
-  const outLine = outLimit ? `out center ${outLimit};` : `out center;`;
+  const outLine = outLimit ? `out center tags ${outLimit};` : `out center tags;`;
 
   const query = `
     [out:json][timeout:180];
@@ -320,8 +323,10 @@ export async function fetchPlaces(bounds, zoom, options) {
   let lastError = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
+    console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
+        console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
         const response = await fetch(endpoint, {
           method: "POST",
           body: query,
@@ -337,13 +342,13 @@ export async function fetchPlaces(bounds, zoom, options) {
         return osmtogeojson(data);
       }, pRetryConfig);
     } catch (error) {
-      if (error?.name === "AbortError") {
-        return;
-      }
-
-      lastError = error;
-      console.warn(`[Overpass] ${endpoint} failed, trying next…`, error);
+    console.error("❌ Overpass fetch failed:", error);
+    if (error?.name === "AbortError") {
+      return;
     }
+    lastError = error;
+    console.warn(`[Overpass] ${endpoint} failed, trying next…`, error);
+  }
   }
 
   if (lastError?.name === "AbortError") {

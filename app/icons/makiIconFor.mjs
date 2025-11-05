@@ -1,6 +1,5 @@
 // URL helper
-const makiUrl = (name) =>
-    new URL(`../../assets/icons/maki/${encodeURIComponent(name)}.svg`, import.meta.url).href;
+const makiUrl = (name) => `/icons/maki/${encodeURIComponent(name)}.svg`;
 
 // --- priority: known "poi-ish" keys first ---
 const TAG_PRIORITY = [

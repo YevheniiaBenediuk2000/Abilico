@@ -5,12 +5,15 @@ import { useEffect } from 'react'
 // ✅ Global styles
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'leaflet/dist/leaflet.css'
-import '../assets/styles/poi-badge.css'
+import './styles/poi-badge.css'
 
 export default function MapContainer() {
     useEffect(() => {
-        ;(async () => {
-            // ✅ Dynamically load all client-only libraries
+        (async () => {
+            // ✅ Wait until React finishes rendering the DOM
+            await new Promise((r) => setTimeout(r, 0))
+
+            // ✅ Dynamically import Leaflet + plugins
             const L = (await import('leaflet')).default
             await import('leaflet.markercluster')
             await import('leaflet.markercluster/dist/MarkerCluster.css')
@@ -20,12 +23,13 @@ export default function MapContainer() {
             await import('leaflet-control-geocoder')
             await import('leaflet-control-geocoder/dist/Control.Geocoder.css')
 
-            // ✅ Bootstrap JS (client-only)
+            // ✅ Bootstrap JS
             await import('bootstrap/dist/js/bootstrap.bundle.min.js')
             window.bootstrap = await import('bootstrap')
 
-            // ✅ Load your main map logic
-            await import('./mapMain.js')
+            // ✅ Now that everything is rendered and loaded, run your main logic
+            const { initMap } = await import('./mapMain.js')
+            initMap() // <— call exported function
         })()
     }, [])
 

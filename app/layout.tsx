@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 // ✅ Global styles
 import "bootstrap/dist/css/bootstrap.min.css";
 import "leaflet/dist/leaflet.css";
-import "../assets/styles/poi-badge.css";
+import "./styles/poi-badge.css";
 import "./styles/ui.css";
 import "./globals.css";
 

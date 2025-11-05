@@ -60,9 +60,11 @@ import { ensurePlaceExists, reviewStorage } from "./api/reviewStorage.js";
 
 const detailsCtx = { latlng: null, placeId: null };
 
-let accessibilityFilter = new Set();
+let accessibilityFilter = new Set(["designated", "yes", "limited", "unknown", "no"]);
 
 let clickPopup = null;
+
+export async function initMap() {
 
 function showQuickRoutePopup(latlng) {
     const html = `
@@ -354,7 +356,8 @@ async function refreshPlaces() {
 
         const placesLayer = L.geoJSON(geojson, {
             pointToLayer: (feature, latlng) => {
-                const tags = feature.properties;
+                const tags = feature.properties.tags || feature.properties;
+                console.log("POI tags sample:", tags);
 
                 const marker = L.marker(latlng, {
                     pane: "places-pane",
@@ -717,6 +720,7 @@ if (navigator.geolocation) {
 
 // ============= EVENT LISTENERS =============
 map.whenReady(async () => {
+    console.log("✅ Leaflet map ready, initializing places...");
     placesPane = map.createPane("places-pane");
     placesPane.style.zIndex = 450;
     L.control.zoom({ position: "bottomright" }).addTo(map);
@@ -737,7 +741,10 @@ map.whenReady(async () => {
     map.on("click", (e) => {
         if (drawState.editing || drawState.deleting) return;
         showQuickRoutePopup(e.latlng);
+
     });
+    // ✅ ensure first batch loads immediately
+    await refreshPlaces();
 });
 
 function renderDepartureSuggestions(items) {
@@ -1013,14 +1020,6 @@ const hideSuggestionsIfClickedOutside = (e) => {
 };
 document.addEventListener("click", hideSuggestionsIfClickedOutside);
 
-document.addEventListener("accessibilityFilterChanged", (e) => {
-    accessibilityFilter = new Set(e.detail);
-    if (!accessibilityFilter) {
-        return;
-    }
-    refreshPlaces();
-});
-
 detailsPanel
     .querySelector("#btn-start-here")
     .addEventListener("click", async () => {
@@ -1064,4 +1063,18 @@ reviewForm.addEventListener("submit", async (e) => {
         console.error("❌ Failed to save review:", error);
         toastError("Could not save your review. Please try again.");
     }
+
+    document.addEventListener("accessibilityFilterChanged", (e) => {
+        const incoming = e.detail;
+
+        if (!incoming || !incoming.length) {
+            // fallback: re-enable all filters
+            accessibilityFilter = new Set(["designated", "yes", "limited", "unknown", "no"]);
+        } else {
+            accessibilityFilter = new Set(incoming);
+        }
+
+        refreshPlaces();
+    });
 });
+}
