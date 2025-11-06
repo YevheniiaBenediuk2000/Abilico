@@ -92,36 +92,154 @@ export default function MapContainer() {
                     </div>
 
                     {/* === Details Panel === */}
+                    {/*<div id="details-panel" className="d-none">*/}
+                    {/*    <div className="d-grid gap-2 mb-3">*/}
+                    {/*        <div className="btn-group" role="group" aria-label="Quick route actions">*/}
+                    {/*            <button id="btn-start-here" type="button" className="btn btn-outline-primary">*/}
+                    {/*                Start here*/}
+                    {/*            </button>*/}
+                    {/*            <button id="btn-go-here" type="button" className="btn btn-outline-danger">*/}
+                    {/*                Go here*/}
+                    {/*            </button>*/}
+                    {/*        </div>*/}
+                    {/*    </div>*/}
+
+                    {/*    <ul id="details-list" className="list-group"></ul>*/}
+
+                    {/*    <form id="review-form" className="mt-3">*/}
+
+            {/*  <textarea*/}
+            {/*      id="review-text"*/}
+            {/*      className="form-control"*/}
+            {/*      placeholder="Write your review…"*/}
+            {/*      required*/}
+            {/*  ></textarea>*/}
+            {/*                <button id="submit-review-btn" className="btn btn-primary mt-2">*/}
+            {/*                    Submit*/}
+            {/*                </button>*/}
+            {/*            </form>*/}
+
+            {/*            <ul id="reviews-list" className="list-group mt-2"></ul>*/}
+            {/*        </div>*/}
+            {/*    </div>*/}
+            {/*</div>*/}
+
+                    {/* === Details Panel with Tabs === */}
                     <div id="details-panel" className="d-none">
-                        <div className="d-grid gap-2 mb-3">
-                            <div className="btn-group" role="group" aria-label="Quick route actions">
-                                <button id="btn-start-here" type="button" className="btn btn-outline-primary">
-                                    Start here
+                        {/* Tabs navigation */}
+                        <ul className="nav nav-tabs" id="detailsTabs" role="tablist">
+                            <li className="nav-item" role="presentation">
+                                <button
+                                    className="nav-link active"
+                                    id="overview-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-overview"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="tab-overview"
+                                    aria-selected="true"
+                                >
+                                    Overview
                                 </button>
-                                <button id="btn-go-here" type="button" className="btn btn-outline-danger">
-                                    Go here
+                            </li>
+                            <li className="nav-item" role="presentation">
+                                <button
+                                    className="nav-link"
+                                    id="reviews-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-reviews"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="tab-reviews"
+                                    aria-selected="false"
+                                >
+                                    Reviews
                                 </button>
+                            </li>
+                            <li className="nav-item" role="presentation">
+                                <button
+                                    className="nav-link"
+                                    id="photos-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#tab-photos"
+                                    type="button"
+                                    role="tab"
+                                    aria-controls="tab-photos"
+                                    aria-selected="false"
+                                >
+                                    Photos
+                                </button>
+                            </li>
+                        </ul>
+
+                        {/* Tabs content */}
+                        <div className="tab-content pt-3" id="detailsTabsContent">
+                            {/* --- Overview tab --- */}
+                            <div
+                                className="tab-pane fade show active"
+                                id="tab-overview"
+                                role="tabpanel"
+                                aria-labelledby="overview-tab"
+                            >
+                                <div className="d-grid gap-2 mb-3">
+                                    <div className="btn-group" role="group" aria-label="Quick route actions">
+                                        <button id="btn-start-here" type="button" className="btn btn-outline-primary">
+                                            Start here
+                                        </button>
+                                        <button id="btn-go-here" type="button" className="btn btn-outline-danger">
+                                            Go here
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="card shadow-sm">
+                                    <div className="list-group list-group-flush" id="details-list"></div>
+                                </div>
+                            </div>
+
+                            {/* --- Reviews tab --- */}
+                            <div
+                                className="tab-pane fade"
+                                id="tab-reviews"
+                                role="tabpanel"
+                                aria-labelledby="reviews-tab"
+                            >
+                                <div className="card shadow-sm">
+                                    <div className="card-body">
+                                        <h6 className="mb-3">Reviews</h6>
+                                        <form id="review-form" className="d-grid gap-2 mb-3">
+            <textarea
+                id="review-text"
+                className="form-control"
+                placeholder="Write your review…"
+                required
+            ></textarea>
+                                            <button id="submit-review-btn" type="submit" className="btn btn-outline-secondary">
+                                                Submit Review
+                                            </button>
+                                        </form>
+                                        <ul id="reviews-list" className="list-group"></ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* --- Photos tab --- */}
+                            <div
+                                className="tab-pane fade"
+                                id="tab-photos"
+                                role="tabpanel"
+                                aria-labelledby="photos-tab"
+                            >
+                                <div id="photos-empty" className="text-muted small d-none">
+                                    No photos found for this place.
+                                </div>
+                                <div id="photos-grid" className="row g-2"></div>
                             </div>
                         </div>
-
-                        <ul id="details-list" className="list-group"></ul>
-
-                        <form id="review-form" className="mt-3">
-              <textarea
-                  id="review-text"
-                  className="form-control"
-                  placeholder="Write your review…"
-                  required
-              ></textarea>
-                            <button id="submit-review-btn" className="btn btn-primary mt-2">
-                                Submit
-                            </button>
-                        </form>
-
-                        <ul id="reviews-list" className="list-group mt-2"></ul>
                     </div>
                 </div>
             </div>
+
+
 
             {/* === Obstacle Modal === */}
             <div className="modal fade" id="obstacleModal" tabIndex="-1" aria-hidden="true">

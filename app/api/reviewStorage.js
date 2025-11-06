@@ -57,6 +57,8 @@ export async function ensurePlaceExists(tags, latlng) {
 export async function reviewStorage(method = "GET", reviewData) {
   try {
     if (method === "GET") {
+      console.log("🧠 reviewStorage(GET) starting", reviewData);
+
       if (!reviewData?.place_id) {
         console.warn("⚠️ reviewStorage(GET) called without place_id");
         return [];
@@ -65,12 +67,16 @@ export async function reviewStorage(method = "GET", reviewData) {
       const { data, error } = await supabase
           .from("reviews")
           .select("*")
-          .eq("place_id", reviewData.place_id) // ✅ filter by place
+          .eq("place_id", reviewData.place_id)
           .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      console.log("✅ Reviews loaded for place:", reviewData.place_id, data);
-      return data;
+      if (error) {
+        console.error("❌ Supabase error:", error);
+        return [];
+      }
+
+      console.log("✅ Supabase returned", data?.length ?? 0, "reviews", data);
+      return data ?? [];
     }
 
     if (method === "POST") {
@@ -78,7 +84,7 @@ export async function reviewStorage(method = "GET", reviewData) {
 
       const payload = {
         comment: reviewData.text,
-        place_id: reviewData.place_id, // valid UUID from ensurePlaceExists
+        place_id: reviewData.place_id,
         rating: reviewData.rating || null,
         image_url: reviewData.image_url || null,
       };

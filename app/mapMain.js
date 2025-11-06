@@ -458,23 +458,43 @@ const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
     });
 
     detailsCtx.latlng = latlng;
-    detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
 
+    const uuid = await ensurePlaceExists(tags, latlng);
+    detailsCtx.placeId = uuid;
+    console.log("✅ detailsCtx.placeId (UUID):", uuid);
+
+// 🧠 Wait for Supabase to confirm that the place record exists
+    await new Promise((r) => setTimeout(r, 300));
+
+    const key = showLoading("reviews-load");
     try {
-        const uuid = await ensurePlaceExists(tags, latlng);
-        detailsCtx.placeId = uuid;
-        console.log("✅ detailsCtx.placeId (UUID):", uuid);
-    } catch (err) {
-        console.error("⚠️ ensurePlaceExists failed:", err);
+        console.log("📡 Fetching reviews for place_id:", detailsCtx.placeId);
+
+        let retries = 3;
+        let data = [];
+
+        while (retries-- > 0) {
+            data = await reviewStorage("GET", { place_id: detailsCtx.placeId });
+            console.log(`🔍 Review fetch attempt ${3 - retries}:`, data?.length, data);
+
+            if (data?.length) break; // found something → stop retrying
+
+            await new Promise((r) => setTimeout(r, 600)); // wait 600 ms before retry
+        }
+
+        reviews = data;
+    } finally {
+        hideLoading(key);
     }
 
-    // Add Reviews Section
+    console.log("🧱 Final reviews count before render:", reviews.length);
     reviewsListEl.innerHTML = "";
+    reviews.forEach((r) => console.log("🪶 Rendering review:", r.comment));
+    reviews.forEach((r) => renderOneReview(r.comment));
 
-    if (!keepDirectionsUi) {
-        directionsUi.classList.add("d-none");
-    }
 
+    reviewsListEl.innerHTML = "";
+    if (!keepDirectionsUi) directionsUi.classList.add("d-none");
     moveDepartureSearchBarUnderTo();
     mountInOffcanvas(titleText);
 
@@ -493,8 +513,6 @@ const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
         showMainPhoto(null);
         renderPhotosGrid([]);
     }
-
-    const key = showLoading("reviews-load");
 
     try {
         reviews = await reviewStorage("GET", { place_id: detailsCtx.placeId });
@@ -1044,37 +1062,39 @@ detailsPanel
         departureSearchInput.focus();
     });
 
-reviewForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const textarea = reviewForm.querySelector("#review-text");
-    const text = textarea.value.trim();
-    if (!text) return;
+    reviewForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const textarea = reviewForm.querySelector("#review-text");
+        const text = textarea.value.trim();
+        if (!text) return;
 
-    try {
-        // ✅ Make sure the OSM place exists in Supabase
-        const placeId = await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng);
+        try {
+            const placeId = await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng);
+            const newReview = { text, place_id: placeId };
 
-        // ✅ Then save the review linked to that UUID
-        const newReview = { text, place_id: placeId };
+            await withButtonLoading(
+                submitReviewBtn,
+                reviewStorage("POST", newReview),
+                "Saving…"
+            );
 
-        await withButtonLoading(
-            submitReviewBtn,
-            reviewStorage("POST", newReview),
-            "Saving…"
-        );
+            // ✅ Reload and render updated reviews list
+            const updated = await reviewStorage("GET", { place_id: placeId });
+            reviewsListEl.innerHTML = "";
+            updated.forEach((r) => renderOneReview(r.comment));
 
-        renderOneReview(text);
-        textarea.value = "";
-    } catch (error) {
-        console.error("❌ Failed to save review:", error);
-        toastError("Could not save your review. Please try again.");
-    }
+            textarea.value = "";
+        } catch (error) {
+            console.error("❌ Failed to save review:", error);
+            toastError("Could not save your review. Please try again.");
+        }
+    });
 
+// ✅ Global — must be OUTSIDE the submit handler
     document.addEventListener("accessibilityFilterChanged", (e) => {
         const incoming = e.detail;
 
         if (!incoming || !incoming.length) {
-            // fallback: re-enable all filters
             accessibilityFilter = new Set(["designated", "yes", "limited", "unknown", "no"]);
         } else {
             accessibilityFilter = new Set(incoming);
@@ -1082,5 +1102,4 @@ reviewForm.addEventListener("submit", async (e) => {
 
         refreshPlaces();
     });
-});
 }
