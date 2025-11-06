@@ -406,123 +406,98 @@ const renderOneReview = (text) => {
     reviewsListEl.appendChild(li);
 };
 
-const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
-    detailsCtx.tags = tags;
-    const titleText = tags.name || tags.amenity || "Details";
+    const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
+        detailsCtx.tags = tags;
+        const titleText = tags.name || tags.amenity || "Details";
 
-    detailsPanel.classList.remove("d-none");
-    const list = detailsPanel.querySelector("#details-list");
-    list.innerHTML = "";
+        detailsPanel.classList.remove("d-none");
+        const list = detailsPanel.querySelector("#details-list");
+        list.innerHTML = "";
 
-    Object.entries(tags).forEach(([key, value]) => {
-        const containsAltName = /alt\s*name/i.test(key);
-        const containsLocalizedVariants =
-            /^(name|alt_name|short_name|display_name):/.test(key.toLowerCase());
-        const isCountryKey = /^country$/i.test(key);
+        // --- Render basic tags (address, amenity, etc.) ---
+        Object.entries(tags).forEach(([key, value]) => {
+            const containsAltName = /alt\s*name/i.test(key);
+            const containsLocalizedVariants = /^(name|alt_name|short_name|display_name):/.test(key.toLowerCase());
+            const isCountryKey = /^country$/i.test(key);
 
-        const isExcluded =
-            EXCLUDED_PROPS.has(key) ||
-            containsAltName ||
-            containsLocalizedVariants ||
-            isCountryKey;
+            const isExcluded =
+                EXCLUDED_PROPS.has(key) ||
+                containsAltName ||
+                containsLocalizedVariants ||
+                isCountryKey;
 
-        if (!isExcluded) {
-            const item = document.createElement("div");
-            item.className =
-                "list-group-item d-flex justify-content-between align-items-start";
-
-            // Format the key for display
-            let displayKey = null;
-            if (key === "display_name") {
-                displayKey = "Address";
-            } else {
-                // Replace underscores with spaces and capitalize first letters
-                displayKey = key
-                    .replace(/^Addr_?/i, "")
-                    .replace(/[_:]/g, " ")
-                    .replace(/\b\w/g, (c) => c.toUpperCase());
-            }
-
-            const displayValue = value
-                .replace(/[_:]/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase());
-
-            item.innerHTML = `
+            if (!isExcluded) {
+                const item = document.createElement("div");
+                item.className = "list-group-item d-flex justify-content-between align-items-start";
+                let displayKey = key === "display_name"
+                    ? "Address"
+                    : key.replace(/^Addr_?/i, "").replace(/[_:]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                const displayValue = value.replace(/[_:]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                item.innerHTML = `
         <div class="me-2">
           <h6 class="mb-1 fw-semibold">${displayKey}</h6>
           <p class="small mb-1">${displayValue}</p>
-        </div>
-      `;
-            list.appendChild(item);
+        </div>`;
+                list.appendChild(item);
+            }
+        });
+
+        detailsCtx.latlng = latlng;
+
+        // ✅ Ensure the place exists before fetching reviews
+        const uuid = await ensurePlaceExists(tags, latlng);
+        detailsCtx.placeId = uuid;
+        console.log("✅ detailsCtx.placeId (UUID):", uuid);
+
+        // ✅ Give Supabase a short delay to confirm record visibility (important for free tier)
+        await new Promise(r => setTimeout(r, 300));
+
+        // ✅ Fetch reviews ONCE (with small retry for consistency)
+        const key = showLoading("reviews-load");
+        let reviewsData = [];
+        try {
+            let retries = 3;
+            while (retries-- > 0) {
+                const data = await reviewStorage("GET", { place_id: detailsCtx.placeId });
+                if (data?.length || retries === 0) {
+                    reviewsData = data;
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 600));
+            }
+        } finally {
+            hideLoading(key);
         }
-    });
 
-    detailsCtx.latlng = latlng;
-
-    const uuid = await ensurePlaceExists(tags, latlng);
-    detailsCtx.placeId = uuid;
-    console.log("✅ detailsCtx.placeId (UUID):", uuid);
-
-// 🧠 Wait for Supabase to confirm that the place record exists
-    await new Promise((r) => setTimeout(r, 300));
-
-    const key = showLoading("reviews-load");
-    try {
-        console.log("📡 Fetching reviews for place_id:", detailsCtx.placeId);
-
-        let retries = 3;
-        let data = [];
-
-        while (retries-- > 0) {
-            data = await reviewStorage("GET", { place_id: detailsCtx.placeId });
-            console.log(`🔍 Review fetch attempt ${3 - retries}:`, data?.length, data);
-
-            if (data?.length) break; // found something → stop retrying
-
-            await new Promise((r) => setTimeout(r, 600)); // wait 600 ms before retry
+        // ✅ Render reviews
+        reviewsListEl.innerHTML = "";
+        if (reviewsData.length === 0) {
+            const emptyMsg = document.createElement("li");
+            emptyMsg.className = "list-group-item text-muted";
+            emptyMsg.textContent = "No reviews yet.";
+            reviewsListEl.appendChild(emptyMsg);
+        } else {
+            reviewsData.forEach(r => renderOneReview(r.comment));
         }
 
-        reviews = data;
-    } finally {
-        hideLoading(key);
-    }
+        // ✅ Handle layout and offcanvas
+        if (!keepDirectionsUi) directionsUi.classList.add("d-none");
+        moveDepartureSearchBarUnderTo();
+        mountInOffcanvas(titleText);
 
-    console.log("🧱 Final reviews count before render:", reviews.length);
-    reviewsListEl.innerHTML = "";
-    reviews.forEach((r) => console.log("🪶 Rendering review:", r.comment));
-    reviews.forEach((r) => renderOneReview(r.comment));
-
-
-    reviewsListEl.innerHTML = "";
-    if (!keepDirectionsUi) directionsUi.classList.add("d-none");
-    moveDepartureSearchBarUnderTo();
-    mountInOffcanvas(titleText);
-
-    // --- Photos ---
-    try {
-        const keyPhotos = showLoading("photos-load");
-        const photos = await resolvePlacePhotos(tags, latlng);
-
-        // Main + rest
-        showMainPhoto(photos[0]);
-        renderPhotosGrid(photos);
-
-        hideLoading(keyPhotos);
-    } catch (err) {
-        console.warn("Photo resolution failed", err);
-        showMainPhoto(null);
-        renderPhotosGrid([]);
-    }
-
-    try {
-        reviews = await reviewStorage("GET", { place_id: detailsCtx.placeId });
-    } finally {
-        hideLoading(key);
-    }
-
-    reviews.forEach((r) => renderOneReview(r.comment));
-
-};
+        // --- Photos ---
+        try {
+            const keyPhotos = showLoading("photos-load");
+            const photos = await resolvePlacePhotos(tags, latlng);
+            showMainPhoto(photos[0]);
+            renderPhotosGrid(photos);
+            hideLoading(keyPhotos);
+        } catch (err) {
+            console.warn("Photo resolution failed", err);
+            showMainPhoto(null);
+            renderPhotosGrid([]);
+        }
+    };
 
 function makeCircleFeature(layer) {
     const center = layer.getLatLng();
