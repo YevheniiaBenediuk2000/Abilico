@@ -28,7 +28,7 @@ export async function fetchPlaceGeometry(osmType, osmId) {
   let lastError = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
+    // console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
         const response = await fetch(endpoint, {
@@ -262,7 +262,7 @@ let placesAbortController = null;
 export async function fetchPlaces(bounds, zoom, options) {
   const { accessibilityFilter } = options;
 
-  console.log("🚀 fetchPlaces called", { bounds, zoom, accessibilityFilter });
+  // console.log("🚀 fetchPlaces called", { bounds, zoom, accessibilityFilter });
 
   const showNoPlaces = zoom < SHOW_PLACES_ZOOM;
   if (showNoPlaces) {
@@ -328,7 +328,7 @@ export async function fetchPlaces(bounds, zoom, options) {
   let lastError = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
+    // console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
         // console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
@@ -343,7 +343,7 @@ export async function fetchPlaces(bounds, zoom, options) {
         }
 
         const data = await response.json();
-        console.log(data);
+        // console.log(data);
         return osmtogeojson(data);
       }, pRetryConfig);
     } catch (error) {

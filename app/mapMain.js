@@ -338,6 +338,30 @@ const geocoder = L.Control.Geocoder.photon({
     reverseUrl: "https://photon.komoot.io/reverse/",
 });
 
+
+// 🚑 Patch Photon geocoder to always fire callback (Next.js / Turbopack safe)
+    geocoder.geocode = async function (query, cb) {
+        try {
+            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}`);
+            if (!res.ok) throw new Error(`Photon error: HTTP ${res.status}`);
+            const json = await res.json();
+
+            // Convert Photon GeoJSON → Leaflet-compatible format
+            const results = json.features.map((f) => ({
+                name: f.properties.name || f.properties.osm_value || "Unnamed",
+                center: [f.geometry.coordinates[1], f.geometry.coordinates[0]],
+                properties: f.properties,
+            }));
+
+            console.log("🌍 Photon geocode manual callback fired:", query, results);
+            cb(results);
+        } catch (err) {
+            console.error("❌ Photon manual geocode failed:", err);
+            cb([]); // always fire callback so UI updates
+        }
+    };
+
+
 let placesReqSeq = 0;
 async function refreshPlaces() {
     const mySeq = ++placesReqSeq; // capture this call’s id
@@ -519,11 +543,11 @@ async function initDrawingObstacles() {
     }
 
     // 🧩 Log all obstacle IDs for debugging
-    console.group("🧱 Obstacles loaded from Supabase");
-    obstacleFeatures.forEach((row, idx) => {
-        console.log(`${idx + 1}. id: ${row.id}, type: ${row.type}, description: ${row.description}`);
-    });
-    console.groupEnd();
+    // console.group("🧱 Obstacles loaded from Supabase");
+    // obstacleFeatures.forEach((row, idx) => {
+    //     console.log(`${idx + 1}. id: ${row.id}, type: ${row.type}, description: ${row.description}`);
+    // });
+    // console.groupEnd();
 
     obstacleFeatures.forEach((row) => {
         const feature = {
@@ -719,7 +743,7 @@ if (navigator.geolocation) {
 
 // ============= EVENT LISTENERS =============
 map.whenReady(async () => {
-    console.log("✅ Leaflet map ready, initializing places...");
+    // console.log("✅ Leaflet map ready, initializing places...");
     placesPane = map.createPane("places-pane");
     placesPane.style.zIndex = 450;
     L.control.zoom({ position: "bottomright" }).addTo(map);
@@ -962,6 +986,7 @@ let destinationGeocodeReqSeq = 0;
 destinationSearchInput.addEventListener(
     "input",
     debounce((e) => {
+        console.log("🎯 debounce triggered for query:", e.target.value);
         const searchQuery = e.target.value.trim();
 
         if (!searchQuery) {
@@ -972,8 +997,11 @@ destinationSearchInput.addEventListener(
         const mySeq = ++destinationGeocodeReqSeq;
         showListSpinner(destinationSuggestionsEl, "Searching…");
 
+        console.log("📡 sending Photon request for:", searchQuery);
         geocoder.geocode(searchQuery, (items) => {
             if (mySeq !== destinationGeocodeReqSeq) return;
+
+            console.log("🌍 Photon geocode result for destination:", searchQuery, items);
 
             renderDestinationSuggestions(items);
 
@@ -999,6 +1027,7 @@ departureSearchInput.addEventListener(
 
         geocoder.geocode(searchQuery, (items) => {
             if (mySeq !== departureGeocodeReqSeq) return;
+            console.log("🚀 Photon geocode result for departure:", searchQuery, items);
             renderDepartureSuggestions(items);
             if (!items?.length) {
                 departureSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;

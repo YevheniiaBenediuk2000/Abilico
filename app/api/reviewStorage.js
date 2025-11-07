@@ -15,7 +15,7 @@ export async function ensurePlaceExists(tags, latlng) {
       `${latlng.lat.toFixed(5)},${latlng.lng.toFixed(5)}`;
 
   const osmKey = `${osmType}/${osmId}`;
-  console.log("🧩 ensurePlaceExists for", osmKey);
+  // console.log("🧩 ensurePlaceExists for", osmKey);
 
   const { data: existing, error: selectErr } = await supabase
       .from("places")
