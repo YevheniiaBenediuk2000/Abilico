@@ -1,12 +1,6 @@
 // 🧭 DEBUG: verify file loads
 console.log("🧩 fetchPhotos.mjs loaded (top of file)", typeof window !== "undefined" ? "in browser" : "on server");
 
-const mainPhotoWrapper = document.getElementById("main-photo-wrapper");
-const mainPhotoImg = document.getElementById("main-photo");
-const mainPhotoCaption = document.getElementById("main-photo-caption");
-const photosGrid = document.getElementById("photos-grid");
-const photosEmpty = document.getElementById("photos-empty");
-
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php?origin=*";
 const WIKI_MEDIA_LIST = (lang, title) =>
   `https://${lang}.wikipedia.org/w/api.php?origin=*&action=query&prop=images&imlimit=max&titles=${encodeURIComponent(
@@ -27,48 +21,65 @@ async function fetchWikipediaImagesList(lang, title) {
 }
 
 export function showMainPhoto(photo) {
+  const mainPhotoWrapper = document.getElementById("main-photo-wrapper");
+  const mainPhotoImg = document.getElementById("main-photo");
+  const mainPhotoCaption = document.getElementById("main-photo-caption");
+
   if (!photo) {
-    mainPhotoWrapper.classList.add("d-none");
-    mainPhotoImg.removeAttribute("src");
-    mainPhotoImg.removeAttribute("alt");
-    mainPhotoCaption.textContent = "";
+    mainPhotoWrapper?.classList.add("d-none");
+    if (mainPhotoImg) {
+      mainPhotoImg.removeAttribute("src");
+      mainPhotoImg.removeAttribute("alt");
+    }
+    if (mainPhotoCaption) mainPhotoCaption.textContent = "";
     return;
   }
 
   mainPhotoImg.src = photo.src || photo.thumb;
   mainPhotoImg.alt = photo.title || "Place photo";
-  mainPhotoCaption.innerHTML = [
-    photo.credit ? `<span>${photo.credit}</span>` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  mainPhotoCaption.innerHTML = photo.credit
+      ? `<span>${photo.credit}</span>`
+      : "";
 
-  // Clicking main photo opens Photos tab and scrolls into view
   mainPhotoImg.onclick = () => {
     const tabBtn = document.getElementById("photos-tab");
-    if (tabBtn) {
-      const tab = new bootstrap.Tab(tabBtn);
+    if (tabBtn && window.bootstrap?.Tab) {
+      const tab = new window.bootstrap.Tab(tabBtn);
       tab.show();
-      photosGrid?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+          .getElementById("photos-grid")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
-  mainPhotoWrapper.classList.remove("d-none");
+  mainPhotoWrapper?.classList.remove("d-none");
 }
 
 export function renderPhotosGrid(photos) {
+  const mainPhotoWrapper = document.getElementById("main-photo-wrapper");
+  const photosGrid = document.getElementById("photos-grid");
+  const photosEmpty = document.getElementById("photos-empty");
+
+  console.log("📸 renderPhotosGrid() started, elements:", {
+    mainPhotoWrapper: !!mainPhotoWrapper,
+    photosGrid: !!photosGrid,
+    photosEmpty: !!photosEmpty,
+  });
+
   photosGrid.innerHTML = "";
+
   if (!photos?.length) {
-    photosEmpty.classList.remove("d-none");
+    console.log("📸 No photos found, showing message");
+    photosEmpty?.classList.remove("d-none");
+    mainPhotoWrapper?.classList.add("d-none");
     return;
   }
-  photosEmpty.classList.add("d-none");
+
+  photosEmpty?.classList.add("d-none");
 
   for (const p of photos) {
-    console.log("Rendering photo:", p);
     const col = document.createElement("div");
     col.className = "col-6";
-
     const a = document.createElement("a");
     a.href = p.pageUrl || p.src;
     a.target = "_blank";
@@ -88,15 +99,14 @@ export function renderPhotosGrid(photos) {
       p.title ? `<strong>${p.title}</strong>` : "",
       p.credit ? `<span>${p.credit}</span>` : "",
     ]
-      .filter(Boolean)
-      .join(" · ");
+        .filter(Boolean)
+        .join(" · ");
     caption.className = "figure-caption";
 
-    tile.appendChild(img);
-    tile.appendChild(caption);
-    a.appendChild(tile);
-    col.appendChild(a);
-    photosGrid.appendChild(col);
+    tile.append(img, caption);
+    a.append(tile);
+    col.append(a);
+    photosGrid.append(col);
   }
 }
 

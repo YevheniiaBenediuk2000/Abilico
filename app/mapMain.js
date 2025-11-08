@@ -458,7 +458,9 @@ const renderOneReview = (text) => {
                 let displayKey = key === "display_name"
                     ? "Address"
                     : key.replace(/^Addr_?/i, "").replace(/[_:]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                const displayValue = value.replace(/[_:]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                const displayValue = String(value)
+                    .replace(/[_:]/g, " ")
+                    .replace(/\b\w/g, c => c.toUpperCase());
                 item.innerHTML = `
         <div class="me-2">
           <h6 class="mb-1 fw-semibold">${displayKey}</h6>
@@ -471,7 +473,15 @@ const renderOneReview = (text) => {
         detailsCtx.latlng = latlng;
 
         // ✅ Ensure the place exists before fetching reviews
-        const uuid = await ensurePlaceExists(tags, latlng);
+        let uuid = null;
+        try {
+            uuid = await ensurePlaceExists(tags, latlng);
+            detailsCtx.placeId = uuid;
+            console.log("✅ detailsCtx.placeId (UUID):", uuid);
+        } catch (err) {
+            console.warn("⚠️ ensurePlaceExists failed, skipping reviews:", err);
+            detailsCtx.placeId = null; // still allow photos to load
+        }
         detailsCtx.placeId = uuid;
         console.log("✅ detailsCtx.placeId (UUID):", uuid);
 
@@ -515,6 +525,8 @@ const renderOneReview = (text) => {
         try {
             const keyPhotos = showLoading("photos-load");
             const photos = await resolvePlacePhotos(tags, latlng);
+
+            console.log("📷 resolvePlacePhotos returned", photos.length, "items:", photos);
             showMainPhoto(photos[0]);
             renderPhotosGrid(photos);
             hideLoading(keyPhotos);
@@ -915,66 +927,69 @@ async function selectDepartureSuggestion(res) {
     await setFrom(res.center, res.name);
 }
 
-async function selectDestinationSuggestion(res) {
-    toggleDestinationSuggestions(false);
+    async function selectDestinationSuggestion(res) {
+        toggleDestinationSuggestions(false);
 
-    if (selectedPlaceLayer) {
-        map.removeLayer(selectedPlaceLayer);
-    }
+        if (selectedPlaceLayer) map.removeLayer(selectedPlaceLayer);
 
-    showDetailsLoading(
-        detailsPanel,
-        res.name ?? "Details",
-        moveDepartureSearchBarUnderTo,
-        mountInOffcanvas
-    );
-    const key = showLoading("place-select");
-
-    try {
-        const osmType = res.properties.osm_type;
-        const osmId = res.properties.osm_id;
-
-        const geojsonGeometry = await fetchPlaceGeometry(osmType, osmId);
-
-        const polyLike =
-            geojsonGeometry.features.find(
-                (f) => f.geometry && f.geometry.type !== "Point"
-            ) || null;
-
-        if (polyLike) {
-            selectedPlaceLayer = L.geoJSON(geojsonGeometry, {
-                style: {
-                    color: "#d33",
-                    weight: 2,
-                    opacity: 0.8,
-                    fillColor: "#f03",
-                    fillOpacity: 0.1,
-                    dashArray: "6,4",
-                },
-            });
-            map.fitBounds(selectedPlaceLayer.getBounds());
-        } else {
-            const icon = waypointDivIcon("", WP_COLORS.end);
-            selectedPlaceLayer = L.marker(res.center, {
-                icon,
-                keyboard: false,
-                interactive: false,
-            });
-            map.setView(selectedPlaceLayer.getLatLng(), 18);
-        }
-
-        selectedPlaceLayer.addTo(map);
-        await setTo(res.center, res.name);
-
-        const tags = await fetchPlace(
-            res.properties.osm_type,
-            res.properties.osm_id
+        showDetailsLoading(
+            detailsPanel,
+            res.name ?? "Details",
+            moveDepartureSearchBarUnderTo,
+            mountInOffcanvas
         );
-        renderDetails(tags, res.center);
-    } finally {
-        hideLoading(key);
+
+        const key = showLoading("place-select");
+
+        try {
+            const osmType = res.properties.osm_type;
+            const osmId = res.properties.osm_id;
+
+            // 🗺️ Draw outline or marker
+            const geojsonGeometry = await fetchPlaceGeometry(osmType, osmId);
+            const polyLike =
+                geojsonGeometry.features.find(
+                    (f) => f.geometry && f.geometry.type !== "Point"
+                ) || null;
+
+            if (polyLike) {
+                selectedPlaceLayer = L.geoJSON(geojsonGeometry, {
+                    style: {
+                        color: "#d33",
+                        weight: 2,
+                        opacity: 0.8,
+                        fillColor: "#f03",
+                        fillOpacity: 0.1,
+                        dashArray: "6,4",
+                    },
+                }).addTo(map);
+                map.fitBounds(selectedPlaceLayer.getBounds());
+            } else {
+                const icon = waypointDivIcon("", WP_COLORS.end);
+                selectedPlaceLayer = L.marker(res.center, { icon, keyboard: false, interactive: false })
+                    .addTo(map);
+                map.setView(selectedPlaceLayer.getLatLng(), 18);
+            }
+
+            await setTo(res.center, res.name);
+
+            // 🧭 STEP 1: basic Photon tags
+            let tags = res.properties.tags || res.properties || {};
+            console.log("🔍 Photon basic tags:", tags);
+
+            // 🧭 STEP 2: fetch Overpass enrichment
+            const enriched = await fetchPlace(osmType, osmId); // uses Overpass
+            tags = { ...tags, ...enriched };
+            console.log("📦 Enriched tags:", tags);
+
+            // 🧭 STEP 3: render all details, photos, reviews, etc.
+            renderDetails(tags, res.center);
+        } catch (err) {
+            console.error("❌ selectDestinationSuggestion failed", err);
+        } finally {
+            hideLoading(key);
+        }
     }
-}
 
 // Also hide on Escape
 departureSearchInput.addEventListener("keydown", (e) => {
