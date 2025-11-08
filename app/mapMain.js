@@ -778,6 +778,8 @@ map.whenReady(async () => {
     L.control.zoom({ position: "bottomright" }).addTo(map);
     placeClusterLayer.addTo(map);
     map.addControl(new AccessibilityLegend());
+    // temp
+    console.log("🧩 AccessibilityLegend added to map");
 
     map.on("draw:editstart", () => (drawState.editing = true));
     map.on("draw:editstop", () => (drawState.editing = false));
