@@ -91,6 +91,16 @@
                             <label htmlFor="destination-search-input">To</label>
                         </div>
 
+                        {/* === Main photo (preview above tabs) === */}
+                        <figure className="figure d-none mb-3" id="main-photo-wrapper">
+                            <img
+                                id="main-photo"
+                                className="figure-img img-fluid shadow-sm mb-1 rounded"
+                                alt=""
+                            />
+                            <figcaption id="main-photo-caption" className="figure-caption small text-muted"></figcaption>
+                        </figure>
+
                         {/* === Details Panel with Tabs === */}
                         <div id="details-panel" className="d-none">
                             {/* Tabs navigation */}

@@ -25,7 +25,7 @@ export async function ensurePlaceExists(tags, latlng) {
 
   if (selectErr) throw selectErr;
   if (existing) {
-    console.log("✅ Found existing place:", existing.id);
+    // console.log("✅ Found existing place:", existing.id);
     return existing.id;
   }
 
@@ -45,7 +45,7 @@ export async function ensurePlaceExists(tags, latlng) {
       .single();
 
   if (error) throw error;
-  console.log("✅ Inserted new place:", data.id);
+  // console.log("✅ Inserted new place:", data.id);
   return data.id;
 }
 
@@ -57,7 +57,7 @@ export async function ensurePlaceExists(tags, latlng) {
 export async function reviewStorage(method = "GET", reviewData) {
   try {
     if (method === "GET") {
-      console.log("🧠 reviewStorage(GET) starting", reviewData);
+      // console.log("🧠 reviewStorage(GET) starting", reviewData);
 
       if (!reviewData?.place_id) {
         console.warn("⚠️ reviewStorage(GET) called without place_id");
@@ -75,12 +75,12 @@ export async function reviewStorage(method = "GET", reviewData) {
         return [];
       }
 
-      console.log("✅ Supabase returned", data?.length ?? 0, "reviews", data);
+      // console.log("✅ Supabase returned", data?.length ?? 0, "reviews", data);
       return data ?? [];
     }
 
     if (method === "POST") {
-      console.log("🧩 Preparing to insert review:", reviewData);
+      // console.log("🧩 Preparing to insert review:", reviewData);
 
       const payload = {
         comment: reviewData.text,

@@ -1,3 +1,6 @@
+// 🧭 DEBUG: verify file loads
+console.log("🧩 fetchPhotos.mjs loaded (top of file)", typeof window !== "undefined" ? "in browser" : "on server");
+
 const mainPhotoWrapper = document.getElementById("main-photo-wrapper");
 const mainPhotoImg = document.getElementById("main-photo");
 const mainPhotoCaption = document.getElementById("main-photo-caption");
@@ -5,7 +8,6 @@ const photosGrid = document.getElementById("photos-grid");
 const photosEmpty = document.getElementById("photos-empty");
 
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php?origin=*";
-
 const WIKI_MEDIA_LIST = (lang, title) =>
   `https://${lang}.wikipedia.org/w/api.php?origin=*&action=query&prop=images&imlimit=max&titles=${encodeURIComponent(
     title
@@ -277,6 +279,8 @@ async function resolveFromWikipediaTag(value) {
   const listPhotos = await fetchWikipediaImagesList(lang, title);
   photos.push(...listPhotos);
 
+
+  console.log("📘 Wikipedia resolver found", photos.length, "photos for", value);
   // As a bonus, try pageimages via MediaWiki API for more sizes (optional)
   return photos;
 }
@@ -328,8 +332,65 @@ async function commonsGeoSearch({ lat, lng }, radiusM = 20, limit = 100) {
     .filter(Boolean);
 }
 
+function firstWikipediaTag(tags = {}) {
+  if (tags.wikipedia) return tags.wikipedia;
+  const k = Object.keys(tags).find((k) => /^wikipedia:[a-z-]+$/i.test(k));
+  return k ? `${k.split(":")[1]}:${tags[k]}` : null;
+}
+
+function subjectWikipedia(tags = {}) {
+  const k = Object.keys(tags).find((k) => /^subject:wikipedia$/i.test(k));
+  return k ? tags[k] : null;
+}
+
+function subjectWikidata(tags = {}) {
+  const k = Object.keys(tags).find((k) => /^subject:wikidata$/i.test(k));
+  return k ? tags[k] : null;
+}
+
+function commonsFromTags(tags = {}) {
+  if (tags.wikimedia_commons) return tags.wikimedia_commons;
+  if (tags["wikimedia_commons:category"]) {
+    return `Category:${tags["wikimedia_commons:category"]}`;
+  }
+  return null;
+}
+
+function commonsTitleFromValue(v) {
+  if (!v) return null;
+  let t = String(v).trim();
+  if (!t || /^https?:\/\//i.test(t)) return null;
+  if (!/^File:/i.test(t)) t = `File:${t}`;
+  return t.replace(/ /g, "_");
+}
+
+function collectOsmImageCandidates(tags = {}) {
+  const urls = [];
+  const commonsTitles = [];
+  for (const k of Object.keys(tags)) {
+    if (!/^image(?::\d+)?$/i.test(k)) continue;
+    const v = String(tags[k]).trim();
+    if (!v) continue;
+    if (isHttpUrl(v)) {
+      urls.push(v);
+    } else {
+      const t = commonsTitleFromValue(v);
+      if (t) commonsTitles.push(t);
+    }
+  }
+  if (tags.wikimedia_commons) {
+    const t = commonsTitleFromValue(tags.wikimedia_commons);
+    if (t) commonsTitles.push(t);
+  }
+  return { urls, commonsTitles };
+}
 /* ---------- Public: resolve photos from all tags ---------- */
 export async function resolvePlacePhotos(tags, latlng) {
+  // 🔍 Automatically find best available photo-related tags
+  const maybeWikipedia = firstWikipediaTag(tags) || subjectWikipedia(tags);
+  const maybeCommons = commonsFromTags(tags);
+  const maybeWikidata = tags.wikidata || subjectWikidata(tags);
+
   const tasks = [];
 
   // image= (direct URLs)
@@ -338,44 +399,57 @@ export async function resolvePlacePhotos(tags, latlng) {
   });
 
   // wikimedia_commons=
-  if (tags?.wikimedia_commons) {
-    tasks.push(resolveFromWikimediaCommonsTag(tags.wikimedia_commons));
+  if (maybeCommons) {
+    tasks.push(resolveFromWikimediaCommonsTag(maybeCommons));
   }
 
   // wikipedia=
-  if (tags?.wikipedia) {
-    tasks.push(resolveFromWikipediaTag(tags.wikipedia));
+  if (maybeWikipedia) {
+    tasks.push(resolveFromWikipediaTag(maybeWikipedia));
   }
 
   // wikidata=
-  if (tags?.wikidata) {
-    tasks.push(resolveFromWikidataTag(tags.wikidata));
+  if (maybeWikidata) {
+    tasks.push(resolveFromWikidataTag(maybeWikidata));
   }
 
-  // Add nearby sources if we have coords
+  // Extra commons titles from image= that are not URLs
+  const cands = collectOsmImageCandidates(tags);
+  if (cands.commonsTitles.length) {
+    tasks.push(fetchCommonsFileInfos(cands.commonsTitles));
+  }
+
+  // Add nearby Commons geosearch if we have coordinates
   if (latlng) {
     tasks.push(commonsGeoSearch(latlng).catch(() => []));
   }
 
+  // Panoramax / Mapillary support
+  if (
+      tags?.panoramax ||
+      Object.keys(tags || {}).some((k) => /^panoramax(?::\d+)?$/i.test(k))
+  ) {
+    tasks.push(resolveFromPanoramaxTags(tags));
+  }
+  if (tags?.mapillary) {
+    tasks.push(resolveFromMapillaryTag(tags.mapillary));
+  }
+
   const chunks = await Promise.allSettled(tasks);
   const flat = chunks
-    .flatMap((c) => (c.status === "fulfilled" ? c.value : []))
-    .filter(Boolean);
+      .flatMap((c) => (c.status === "fulfilled" ? c.value : []))
+      .filter(Boolean);
 
-  // Dedup by src URL
   const unique = uniqBy(flat, (x) => x.src || x.thumb || x.pageUrl);
-
-  // Lightweight ranking: prefer P18/Commons/Wikipedia over “direct image” if present
   const score = (p) =>
-    p.source?.includes("Wikimedia")
-      ? 3
-      : p.source?.startsWith("Wikipedia")
-      ? 2
-      : p.source === "Direct"
-      ? 1
-      : 0;
+      p.source?.includes("Wikimedia")
+          ? 3
+          : p.source?.startsWith("Wikipedia")
+              ? 2
+              : p.source === "Direct"
+                  ? 1
+                  : 0;
 
   unique.sort((a, b) => score(b) - score(a));
-
   return unique;
 }

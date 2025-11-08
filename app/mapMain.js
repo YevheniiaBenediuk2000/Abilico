@@ -53,6 +53,8 @@ import {
     showMainPhoto,
 } from "./modules/fetchPhotos.mjs";
 
+console.log("🧭 mapMain.js imported fetchPhotos.mjs successfully");
+
 import { makePoiIcon } from "./icons/makePoiIcon.mjs";
 import { supabase } from "./api/supabaseClient.js";
 import { ensurePlaceExists, reviewStorage } from "./api/reviewStorage.js";
@@ -353,7 +355,7 @@ const geocoder = L.Control.Geocoder.photon({
                 properties: f.properties,
             }));
 
-            console.log("🌍 Photon geocode manual callback fired:", query, results);
+            // console.log("🌍 Photon geocode manual callback fired:", query, results);
             cb(results);
         } catch (err) {
             console.error("❌ Photon manual geocode failed:", err);
@@ -997,11 +999,11 @@ destinationSearchInput.addEventListener(
         const mySeq = ++destinationGeocodeReqSeq;
         showListSpinner(destinationSuggestionsEl, "Searching…");
 
-        console.log("📡 sending Photon request for:", searchQuery);
+        // console.log("📡 sending Photon request for:", searchQuery);
         geocoder.geocode(searchQuery, (items) => {
             if (mySeq !== destinationGeocodeReqSeq) return;
 
-            console.log("🌍 Photon geocode result for destination:", searchQuery, items);
+            // console.log("🌍 Photon geocode result for destination:", searchQuery, items);
 
             renderDestinationSuggestions(items);
 
