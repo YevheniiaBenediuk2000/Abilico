@@ -433,6 +433,21 @@ const renderOneReview = (text) => {
 };
 
     const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
+        // ✅ Normalize latlng to ensure it always has valid structure
+        if (!latlng || typeof latlng.lat !== "number" || typeof latlng.lng !== "number") {
+            console.warn("⚠️ renderDetails received invalid latlng, repairing from tags:", latlng, tags);
+            // Try to reconstruct from tag coordinates if possible
+            if (tags.lat && tags.lon) {
+                latlng = { lat: parseFloat(tags.lat), lng: parseFloat(tags.lon) };
+            } else if (tags.geometry?.coordinates) {
+                const [lon, lat] = tags.geometry.coordinates;
+                latlng = { lat, lng: lon };
+            } else {
+                // fallback to map center to avoid crash
+                latlng = map.getCenter();
+            }
+        }
+
         detailsCtx.tags = tags;
         const titleText = tags.name || tags.amenity || "Details";
 
@@ -1090,7 +1105,8 @@ detailsPanel
         if (!text) return;
 
         try {
-            const placeId = await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng);
+            console.log("🧭 Review submit ctx:", detailsCtx);
+            const placeId = detailsCtx.placeId ?? (await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng));
             const newReview = { text, place_id: placeId };
 
             await withButtonLoading(

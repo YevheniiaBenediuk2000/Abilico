@@ -6,6 +6,12 @@ import { supabase } from "./supabaseClient.js";
  * @param {Object} latlng - { lat, lng } of the place
  */
 export async function ensurePlaceExists(tags, latlng) {
+
+  if (!latlng?.lat || !latlng?.lng) {
+    console.warn("⚠️ ensurePlaceExists called without valid lat/lng:", latlng);
+    throw new Error("Missing lat/lng for place");
+  }
+
   // 🧠 Safely extract OSM identity
   const osmType = tags.osm_type || tags.type || tags.source_type || "unknown";
   const osmId =
