@@ -1,56 +1,52 @@
 // your old Leaflet app logic
 
 // will now just render a wrapper
-// import {
-//   pipeline,
-//   env,
-// } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
-import debounce from "lodash.debounce"
+import debounce from "lodash.debounce";
 
+import elements from "./constants/domElements.js";
 import {
-    fetchPlace,
-    fetchPlaceGeometry,
-    fetchPlaces,
+  fetchPlace,
+  fetchPlaceGeometry,
+  fetchPlaces,
 } from "./api/fetchPlaces.js";
 import { fetchRoute } from "./api/fetchRoute.js";
 import { obstacleStorage } from "./api/obstacleStorage.js";
 import {
-    BASE_PATH,
-    DEFAULT_ZOOM,
-    EXCLUDED_PROPS,
-    SIZE_BY_TIER,
-    placeClusterConfig,
-} from "./constants.mjs";
+  BASE_PATH,
+  DEFAULT_ZOOM,
+  EXCLUDED_PROPS,
+  SIZE_BY_TIER,
+  placeClusterConfig,
+} from "./constants/constants.mjs";
 import { toastError, toastWarn } from "./utils/toast.mjs";
 import { waypointDivIcon, WP_COLORS } from "./utils/wayPoints.mjs";
 import {
-    DRAW_HELP_LS_KEY,
-    DrawHelpAlert,
+  DRAW_HELP_LS_KEY,
+  DrawHelpAlert,
 } from "./leaflet-controls/DrawHelpAlert.mjs";
 import {
-    AccessibilityLegend,
-    getAccessibilityTier,
+  AccessibilityLegend,
+  getAccessibilityTier,
 } from "./leaflet-controls/AccessibilityLegend.mjs";
 import { ls } from "./utils/localStorage.mjs";
 import {
-    duringLoading,
-    hideLoading,
-    showDetailsLoading,
-    showListSpinner,
-    showLoading,
-    withButtonLoading,
+  duringLoading,
+  hideLoading,
+  showDetailsLoading,
+  showListSpinner,
+  showLoading,
+  withButtonLoading,
 } from "./utils/loading.mjs";
 import {
-    baseLayers,
-    BASEMAP_LS_KEY,
-    BasemapGallery,
-    osm,
+  baseLayers,
+  BASEMAP_LS_KEY,
+  BasemapGallery,
+  osm,
 } from "./leaflet-controls/BasemapGallery.mjs";
-import { detailsPanel } from "./utils/commonVariables.mjs";
 import {
-    renderPhotosGrid,
-    resolvePlacePhotos,
-    showMainPhoto,
+  renderPhotosGrid,
+  resolvePlacePhotos,
+  showMainPhoto,
 } from "./modules/fetchPhotos.mjs";
 
 console.log("🧭 mapMain.js imported fetchPhotos.mjs successfully");
@@ -58,17 +54,32 @@ console.log("🧭 mapMain.js imported fetchPhotos.mjs successfully");
 import { makePoiIcon } from "./icons/makePoiIcon.mjs";
 import { supabase } from "./api/supabaseClient.js";
 import { ensurePlaceExists, reviewStorage } from "./api/reviewStorage.js";
+import {
+  cleanUrl,
+  hostLabel,
+  linkLabel,
+  normalizeTagsCase,
+  splitMulti,
+  toMapillaryViewerUrl,
+} from "./modules/beautifyDetailLinks.js";
 
+import { recomputePlaceAccessibilityKeywords } from "./modules/accessibilityKeywordsExtraction.js";
+import globals from "./constants/globalVariables.js";
 
-const detailsCtx = { latlng: null, placeId: null };
+globals.detailsCtx = { latlng: null, placeId: null };
 
-let accessibilityFilter = new Set(["designated", "yes", "limited", "unknown", "no"]);
+let accessibilityFilter = new Set([
+  "designated",
+  "yes",
+  "limited",
+  "unknown",
+  "no",
+]);
 
 let clickPopup = null;
 
 export async function initMap() {
-
-function showQuickRoutePopup(latlng) {
+  function showQuickRoutePopup(latlng) {
     const html = `
     <div class="d-flex align-items-center gap-2" role="group" aria-label="Quick route actions">
       <button id="qp-start" type="button" class="btn btn-sm btn-primary">Start here</button>
@@ -77,20 +88,20 @@ function showQuickRoutePopup(latlng) {
   `;
 
     if (clickPopup) {
-        map.closePopup(clickPopup);
-        clickPopup = null;
+      map.closePopup(clickPopup);
+      clickPopup = null;
     }
 
     clickPopup = L.popup({
-        className: "quick-choose-popup",
-        offset: [0, -8],
-        autoClose: true,
-        closeOnClick: true,
-        closeButton: true,
+      className: "quick-choose-popup",
+      offset: [0, -8],
+      autoClose: true,
+      closeOnClick: true,
+      closeButton: true,
     })
-        .setLatLng(latlng)
-        .setContent(html)
-        .openOn(map);
+      .setLatLng(latlng)
+      .setContent(html)
+      .openOn(map);
 
     const startBtn = document.getElementById("qp-start");
     const goBtn = document.getElementById("qp-go");
@@ -105,7 +116,8 @@ function showQuickRoutePopup(latlng) {
 
             await setFrom(latlng, null, { fit: false });
             // chInput.focus();
-            departureSearchInput.focus();
+            elements.departureSearchInput.focus();
+            // departureSearchInput.focus();
         } finally {
             map.closePopup(clickPopup);
             console.log("🟢 Start here handler finished");
@@ -120,149 +132,127 @@ function showQuickRoutePopup(latlng) {
             moveDepartureSearchBarUnderTo();
             mountInOffcanvas("Directions");
 
-            await setTo(latlng, null, { fit: false });
-            departureSearchInput.focus();
-        } finally {
-            map.closePopup(clickPopup);
-        }
+        await setTo(latlng, null, { fit: false });
+        elements.departureSearchInput.focus();
+      } finally {
+        map.closePopup(clickPopup);
+      }
     });
-}
+  }
 
-const directionsUi = document.getElementById("directions-ui");
+  const directionsUi = document.getElementById("directions-ui");
 
-let selectedPlaceLayer = null;
-let placesPane;
+  let selectedPlaceLayer = null;
+  let placesPane;
 
-const placeClusterLayer = L.markerClusterGroup(placeClusterConfig);
+  const placeClusterLayer = L.markerClusterGroup(placeClusterConfig);
 
-// Track when Leaflet.Draw is in editing/deleting mode
-const drawState = { editing: false, deleting: false };
-let drawControl = null;
+  // Track when Leaflet.Draw is in editing/deleting mode
+  const drawState = { editing: false, deleting: false };
+  let drawControl = null;
 
-// ===== OMNIBOX STATE =====
-const destinationSearchBar = document.getElementById("destination-search-bar");
-const destinationSearchBarHome = destinationSearchBar.parentElement;
-const destinationSearchInput = document.getElementById(
-    "destination-search-input"
-);
-const destinationSuggestionsEl = document.getElementById(
-    "destination-suggestions"
-);
+  let fromLatLng = null;
+  let toLatLng = null;
+  let fromMarker = null;
+  let toMarker = null;
+  let routeLayer = null;
 
-const departureSearchBar = document.getElementById("departure-search-bar");
-const departureSearchInput = document.getElementById("departure-search-input");
-const departureSuggestionsEl = document.getElementById("departure-suggestions");
+  const drawnItems = new L.FeatureGroup();
+  let drawHelpAlertControl = null;
 
-let fromLatLng = null;
-let toLatLng = null;
-let fromMarker = null;
-let toMarker = null;
-let routeLayer = null;
+  let obstacleFeatures = [];
 
-const drawnItems = new L.FeatureGroup();
-let drawHelpAlertControl = null;
+  const offcanvasInstance = new bootstrap.Offcanvas(elements.offcanvas);
 
-let obstacleFeatures = [];
-let reviews = [];
-
-const reviewForm = detailsPanel.querySelector("#review-form");
-const reviewsListEl = detailsPanel.querySelector("#reviews-list");
-const submitReviewBtn = detailsPanel.querySelector("#submit-review-btn");
-
-// ----- Offcanvas integration -----
-const offcanvasEl = document.getElementById("placeOffcanvas");
-const offcanvasTitleEl = document.getElementById("placeOffcanvasLabel");
-const offcanvasInstance = new bootstrap.Offcanvas(offcanvasEl);
-
-/** Mount search bar + details panel into the Offcanvas and open it. */
-function mountInOffcanvas(titleText) {
-    offcanvasTitleEl.textContent = titleText;
+  /** Mount search bar + details panel into the Offcanvas and open it. */
+  function mountInOffcanvas(titleText) {
+    elements.offcanvasTitle.textContent = titleText;
     offcanvasInstance.show();
-}
+  }
 
-offcanvasEl.addEventListener("hidden.bs.offcanvas", () => {
-    destinationSearchBarHome.prepend(destinationSearchBar);
-    destinationSearchBar.classList.remove("d-none");
-});
+  elements.offcanvas.addEventListener("hidden.bs.offcanvas", () => {
+    elements.destinationSearchBarHome.prepend(elements.destinationSearchBar);
+    elements.destinationSearchBar.classList.remove("d-none");
+  });
 
-// ---------- Bootstrap Modal + Tooltip helpers ----------
-let obstacleModalInstance = null;
-let obstacleForm, obstacleTitleInput;
+  // ---------- Bootstrap Modal + Tooltip helpers ----------
+  let obstacleModalInstance = null;
+  let obstacleForm, obstacleTitleInput;
 
-function toggleDepartureSuggestions(visible) {
-    departureSuggestionsEl.classList.toggle("d-none", !visible);
-    departureSearchInput.setAttribute(
-        "aria-expanded",
-        visible ? "true" : "false"
+  function toggleDepartureSuggestions(visible) {
+    elements.departureSuggestions.classList.toggle("d-none", !visible);
+    elements.departureSearchInput.setAttribute(
+      "aria-expanded",
+      visible ? "true" : "false"
     );
-}
+  }
 
-function toggleDestinationSuggestions(visible) {
-    destinationSuggestionsEl.classList.toggle("d-none", !visible);
-    destinationSearchInput.setAttribute(
-        "aria-expanded",
-        visible ? "true" : "false"
+  function toggleDestinationSuggestions(visible) {
+    elements.destinationSuggestions.classList.toggle("d-none", !visible);
+    elements.destinationSearchInput.setAttribute(
+      "aria-expanded",
+      visible ? "true" : "false"
     );
-}
+  }
 
-function ensureObstacleModal() {
+  function ensureObstacleModal() {
     if (!obstacleModalInstance) {
-        const modalEl = document.getElementById("obstacleModal");
-        obstacleForm = document.getElementById("obstacle-form");
-        obstacleTitleInput = document.getElementById("obstacle-title");
-        obstacleModalInstance = new bootstrap.Modal(modalEl);
+      const modalEl = document.getElementById("obstacleModal");
+      obstacleForm = document.getElementById("obstacle-form");
+      obstacleTitleInput = document.getElementById("obstacle-title");
+      obstacleModalInstance = new bootstrap.Modal(modalEl);
     }
-}
+  }
 
-/**
- * Opens the Bootstrap modal. Returns a Promise that resolves to:
- *  { title } on Save, or null on Cancel/close.
- */
-function showObstacleModal(initial = { title: "" }) {
+  /**
+   * Opens the Bootstrap modal. Returns a Promise that resolves to:
+   *  { title } on Save, or null on Cancel/close.
+   */
+  function showObstacleModal(initial = { title: "" }) {
     ensureObstacleModal();
     obstacleTitleInput.value = initial.title;
 
     return new Promise((resolve) => {
-        let saved = false;
+      let saved = false;
 
-        const onSubmit = (e) => {
-            e.preventDefault();
-            saved = true;
-            const title = obstacleTitleInput.value.trim();
-            obstacleModalInstance.hide();
-            obstacleForm.removeEventListener("submit", onSubmit);
-            modalEl.removeEventListener("hidden.bs.modal", onHidden);
-            resolve({ title });
-        };
+      const onSubmit = (e) => {
+        e.preventDefault();
+        saved = true;
+        const title = obstacleTitleInput.value.trim();
+        obstacleModalInstance.hide();
+        obstacleForm.removeEventListener("submit", onSubmit);
+        modalEl.removeEventListener("hidden.bs.modal", onHidden);
+        resolve({ title });
+      };
 
-        const modalEl = document.getElementById("obstacleModal");
-        const onHidden = () => {
-            obstacleForm.removeEventListener("submit", onSubmit);
-            modalEl.removeEventListener("hidden.bs.modal", onHidden);
-            if (!saved) resolve(null);
-        };
+      const modalEl = document.getElementById("obstacleModal");
+      const onHidden = () => {
+        obstacleForm.removeEventListener("submit", onSubmit);
+        modalEl.removeEventListener("hidden.bs.modal", onHidden);
+        if (!saved) resolve(null);
+      };
 
-        obstacleForm.addEventListener("submit", onSubmit);
-        modalEl.addEventListener("hidden.bs.modal", onHidden);
-        obstacleModalInstance.show();
+      obstacleForm.addEventListener("submit", onSubmit);
+      modalEl.addEventListener("hidden.bs.modal", onHidden);
+      obstacleModalInstance.show();
     });
-}
+  }
 
-function tooltipTextFromProps(p = {}) {
+  function tooltipTextFromProps(p = {}) {
     const t = p.title?.trim();
     if (t) return t;
     return "Obstacle";
-}
+  }
 
-function attachBootstrapTooltip(layer, text) {
+  function attachBootstrapTooltip(layer, text) {
     // Vector layers (polygon/circle/line) are SVG paths; markers have icons.
     const el = layer.getElement?.() || layer._path || layer._icon;
     if (!el) return;
 
     // Dispose an existing tooltip on this layer if present.
     if (layer._bsTooltip) {
-        layer._bsTooltip.dispose();
-        layer._bsTooltip = null;
+      layer._bsTooltip.dispose();
+      layer._bsTooltip = null;
     }
 
     el.setAttribute("data-bs-toggle", "tooltip");
@@ -272,16 +262,16 @@ function attachBootstrapTooltip(layer, text) {
 
     // Create a fresh tooltip instance
     layer._bsTooltip = new bootstrap.Tooltip(el, {
-        placement: "top",
-        trigger: "hover focus",
-        container: "body",
+      placement: "top",
+      trigger: "hover focus",
+      container: "body",
     });
-}
+  }
 
-async function openEditModalForLayer(layer) {
+  async function openEditModalForLayer(layer) {
     const id = layer.options.obstacleId;
     const idx = obstacleFeatures.findIndex(
-        (f) => f.properties?.obstacleId === id
+      (f) => f.properties?.obstacleId === id
     );
     if (idx === -1) return;
 
@@ -291,53 +281,53 @@ async function openEditModalForLayer(layer) {
 
     // Update in-memory + storage
     obstacleFeatures[idx].properties = {
-        ...props,
-        obstacleId: id,
-        title: result.title,
+      ...props,
+      obstacleId: id,
+      title: result.title,
     };
     await obstacleStorage("PUT", obstacleFeatures);
 
     // Update tooltip
     attachBootstrapTooltip(
-        layer,
-        tooltipTextFromProps(obstacleFeatures[idx].properties)
+      layer,
+      tooltipTextFromProps(obstacleFeatures[idx].properties)
     );
-}
+  }
 
-function hookLayerInteractions(layer, props) {
+  function hookLayerInteractions(layer, props) {
     // Ensure the element exists in the DOM before creating tooltip
     // (safe if we call after the layer is added to the map/featureGroup).
     // Re-attach tooltip whenever the layer is re-added to the map
     layer.once("add", () =>
-        attachBootstrapTooltip(layer, tooltipTextFromProps(props))
+      attachBootstrapTooltip(layer, tooltipTextFromProps(props))
     );
 
     layer.off("click");
     layer.on("click", () => {
-        if (drawState.deleting || drawState.editing) return;
-        openEditModalForLayer(layer);
+      if (drawState.deleting || drawState.editing) return;
+      openEditModalForLayer(layer);
     });
-}
+  }
 
-function toggleObstaclesByZoom() {
+  function toggleObstaclesByZoom() {
     const allow = map.getZoom() >= DEFAULT_ZOOM;
 
     if (allow) {
-        if (!drawHelpAlertControl && !ls.get(DRAW_HELP_LS_KEY)) {
-            drawHelpAlertControl = new DrawHelpAlert();
-            map.addControl(drawHelpAlertControl);
-        }
+      if (!drawHelpAlertControl && !ls.get(DRAW_HELP_LS_KEY)) {
+        drawHelpAlertControl = new DrawHelpAlert();
+        map.addControl(drawHelpAlertControl);
+      }
 
-        map.addControl(drawControl);
+      map.addControl(drawControl);
     } else {
-        if (drawHelpAlertControl && !ls.get(DRAW_HELP_LS_KEY)) {
-            map.removeControl(drawHelpAlertControl);
-            drawHelpAlertControl = null;
-        }
+      if (drawHelpAlertControl && !ls.get(DRAW_HELP_LS_KEY)) {
+        map.removeControl(drawHelpAlertControl);
+        drawHelpAlertControl = null;
+      }
 
-        map.removeControl(drawControl);
+      map.removeControl(drawControl);
     }
-}
+  }
 
     // ✅ Create a Photon-based geocoder instance from Leaflet-Control-Geocoder.
 // This object normally has `geocode()` (search by name) and `reverse()` (get name from coordinates),
@@ -347,6 +337,14 @@ function toggleObstaclesByZoom() {
         reverseUrl: "https://photon.komoot.io/reverse/",
     });
 
+  // 🚑 Patch Photon geocoder to always fire callback (Next.js / Turbopack safe)
+  geocoder.geocode = async function (query, cb) {
+    try {
+      const res = await fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}`
+      );
+      if (!res.ok) throw new Error(`Photon error: HTTP ${res.status}`);
+      const json = await res.json();
 
 // ------------------------------------------------------------
 // Utility helper for making safe JSON requests
@@ -461,203 +459,350 @@ async function refreshPlaces() {
     const key = showLoading("places");
 
     try {
-        const geojson = await fetchPlaces(map.getBounds(), zoom, {
-            accessibilityFilter,
-        });
-        // If this response is for an old call, ignore it
-        if (mySeq !== placesReqSeq) return;
+      const geojson = await fetchPlaces(map.getBounds(), zoom, {
+        accessibilityFilter,
+      });
+      // If this response is for an old call, ignore it
+      if (mySeq !== placesReqSeq) return;
 
-        placeClusterLayer.clearLayers();
+      placeClusterLayer.clearLayers();
 
-        const placesLayer = L.geoJSON(geojson, {
-            pointToLayer: (feature, latlng) => {
-                const tags = feature.properties.tags || feature.properties;
-                // console.log("POI tags sample:", tags);
+      const placesLayer = L.geoJSON(geojson, {
+        pointToLayer: (feature, latlng) => {
+          const tags = feature.properties.tags || feature.properties;
+          // console.log("POI tags sample:", tags);
 
-                const marker = L.marker(latlng, {
-                    pane: "places-pane",
-                    icon: makePoiIcon(tags), // <-- fixed 33px badge
-                })
-                    .on("click", () => {
-                        renderDetails(tags, latlng, { keepDirectionsUi: true });
-                    })
-                    .on("add", () => {
-                        const title = tags.name ?? tags.amenity ?? "Unnamed place";
-                        attachBootstrapTooltip(marker, title);
-                    })
-                    .on("remove", () => {
-                        if (marker._bsTooltip) {
-                            marker._bsTooltip.dispose();
-                            marker._bsTooltip = null;
-                        }
-                    });
+          const marker = L.marker(latlng, {
+            pane: "places-pane",
+            icon: makePoiIcon(tags), // <-- fixed 33px badge
+          })
+            .on("click", () => {
+              renderDetails(tags, latlng, { keepDirectionsUi: true });
+            })
+            .on("add", () => {
+              const title = tags.name ?? tags.amenity ?? "Unnamed place";
+              attachBootstrapTooltip(marker, title);
+            })
+            .on("remove", () => {
+              if (marker._bsTooltip) {
+                marker._bsTooltip.dispose();
+                marker._bsTooltip = null;
+              }
+            });
 
-                return marker;
-            },
-        });
-        placeClusterLayer.addLayer(placesLayer);
+          return marker;
+        },
+      });
+      placeClusterLayer.addLayer(placesLayer);
     } finally {
-        hideLoading(key);
+      hideLoading(key);
     }
-}
+  }
 
-    function moveDepartureSearchBarUnderTo() {
-        const toLabel = directionsUi?.querySelector?.(
-            'label[for="destination-search-input"]'
-        );
+  function moveDepartureSearchBarUnderTo() {
+    const toLabel = directionsUi?.querySelector?.(
+      'label[for="destination-search-input"]'
+    );
 
-        if (!toLabel) {
-            console.warn("⚠️ moveDepartureSearchBarUnderTo: label not found");
-            return;
-        }
-
-        toLabel.insertAdjacentElement("afterend", destinationSearchBar);
+    if (!toLabel) {
+      console.warn("⚠️ moveDepartureSearchBarUnderTo: label not found");
+      return;
     }
 
-const renderOneReview = (text) => {
+    toLabel.insertAdjacentElement("afterend", elements.destinationSearchBar);
+  }
+
+  const renderOneReview = (text) => {
     const li = document.createElement("li");
     li.className = "list-group-item text-wrap";
-    li.innerHTML = text;
-    reviewsListEl.appendChild(li);
-};
+    li.innerHTML = `${text}<div class="mt-1 d-flex flex-wrap gap-1 review-badges"></div>`;
+    elements.reviewsList.appendChild(li);
+  };
 
-    const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
-        // ✅ Normalize latlng to ensure it always has valid structure
-        if (!latlng || typeof latlng.lat !== "number" || typeof latlng.lng !== "number") {
-            console.warn("⚠️ renderDetails received invalid latlng, repairing from tags:", latlng, tags);
-            // Try to reconstruct from tag coordinates if possible
-            if (tags.lat && tags.lon) {
-                latlng = { lat: parseFloat(tags.lat), lng: parseFloat(tags.lon) };
-            } else if (tags.geometry?.coordinates) {
-                const [lon, lat] = tags.geometry.coordinates;
-                latlng = { lat, lng: lon };
-            } else {
-                // fallback to map center to avoid crash
-                latlng = map.getCenter();
+  const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
+    // ✅ Normalize latlng to ensure it always has valid structure
+    if (
+      !latlng ||
+      typeof latlng.lat !== "number" ||
+      typeof latlng.lng !== "number"
+    ) {
+      console.warn(
+        "⚠️ renderDetails received invalid latlng, repairing from tags:",
+        latlng,
+        tags
+      );
+      // Try to reconstruct from tag coordinates if possible
+      if (tags.lat && tags.lon) {
+        latlng = { lat: parseFloat(tags.lat), lng: parseFloat(tags.lon) };
+      } else if (tags.geometry?.coordinates) {
+        const [lon, lat] = tags.geometry.coordinates;
+        latlng = { lat, lng: lon };
+      } else {
+        // fallback to map center to avoid crash
+        latlng = map.getCenter();
+      }
+    }
+
+    globals.detailsCtx.tags = tags;
+    const titleText = tags.name || tags.amenity || "Details";
+
+    elements.detailsPanel.classList.remove("d-none");
+    const list = elements.detailsPanel.querySelector("#details-list");
+    list.innerHTML = "";
+
+    const nTags = normalizeTagsCase(tags);
+
+    // WEBSITE (single merged block)
+    const websiteLinks = splitMulti(nTags.website || "")
+      .map(cleanUrl)
+      .filter(Boolean);
+    if (websiteLinks.length) {
+      const item = document.createElement("div");
+      item.className =
+        "list-group-item d-flex justify-content-between align-items-start";
+      const links = websiteLinks
+        .map(
+          (u) =>
+            `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${linkLabel(
+              u
+            )}</a>`
+        )
+        .join(" · ");
+      item.innerHTML = `<div class="me-2"><h6 class="mb-1 fw-semibold">Website</h6><p class="small mb-1">${links}</p></div>`;
+      list.appendChild(item);
+    }
+
+    // --- Render basic tags (address, amenity, etc.) ---
+    Object.entries(nTags).forEach(([key, value]) => {
+      const isWebsiteVariant =
+        /^(website|url)(?::\d+)?$/i.test(key) || /^contact:website$/i.test(key);
+      if (isWebsiteVariant) return;
+
+      const containsAltName = /alt\s*name/i.test(key);
+      const containsLocalizedVariants =
+        /^(name|alt_name|short_name|display_name):/i.test(key);
+      const isCountryKey = /^country$/i.test(key);
+      const isWikiDataKey = /^wikidata(?::[a-z-]+)?$/i.test(key);
+
+      const isExcluded =
+        EXCLUDED_PROPS.has(key) ||
+        containsAltName ||
+        containsLocalizedVariants ||
+        isCountryKey ||
+        isWikiDataKey;
+
+      if (isExcluded) return;
+
+      const lk = key.toLowerCase();
+      const item = document.createElement("div");
+      item.className =
+        "list-group-item d-flex justify-content-between align-items-start";
+
+      // Special cases: linkify
+      if (lk === "website" || lk === "url") {
+        const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+        if (!urls.length) return;
+
+        const links = urls
+          .map(
+            (u) =>
+              `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+                u
+              )}</a>`
+          )
+          .join(" · ");
+
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Website</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "image") {
+        const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+        if (!urls.length) return;
+
+        const links = urls
+          .map((u) => {
+            // If someone put a Mapillary URL in image=, route it to the viewer
+            if (/mapillary\.com/i.test(u)) {
+              const viewer = toMapillaryViewerUrl(u);
+              return `<a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Mapillary</a>`;
             }
+            // Google Photos shares are pages, not direct images; still useful
+            if (/photos\.app\.goo\.gl|photos\.google\.com/i.test(u)) {
+              return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">Google Photos</a>`;
+            }
+            // Fallback: show host
+            return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+              u
+            )}</a>`;
+          })
+          .join(" · ");
+
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Photo Link(s)</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "mapillary") {
+        const viewer = toMapillaryViewerUrl(value);
+        if (!viewer) return;
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Street Imagery</h6>
+        <p class="small mb-1">
+          <a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Open in Mapillary</a>
+        </p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "wikipedia" || /^wikipedia:[a-z-]+$/i.test(lk)) {
+        const spec =
+          lk === "wikipedia" ? value : `${lk.split(":")[1]}:${value}`;
+        const m = String(spec).match(/^([a-z-]+)\s*:\s*(.+)$/i);
+        if (m) {
+          const lang = m[1];
+          const title = m[2].replace(/\s/g, "_");
+          const href = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(
+            title
+          )}`;
+          item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Wikipedia</h6>
+        <p class="small mb-1"><a href="${href}" target="_blank" rel="noopener">Wikipedia (${lang})</a></p>
+      </div>`;
+          list.appendChild(item);
+          return;
         }
+      }
 
-        detailsCtx.tags = tags;
-        const titleText = tags.name || tags.amenity || "Details";
+      // Default rendering
+      let displayKey = null;
+      if (key === "display_name") {
+        displayKey = "Address";
+      } else {
+        displayKey = key
+          .replace(/^Addr_?/i, "")
+          .replace(/[_:]/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
 
-        detailsPanel.classList.remove("d-none");
-        const list = detailsPanel.querySelector("#details-list");
-        list.innerHTML = "";
+      const displayValue = String(value)
+        .replace(/[_:]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
 
-        // --- Render basic tags (address, amenity, etc.) ---
-        Object.entries(tags).forEach(([key, value]) => {
-            const containsAltName = /alt\s*name/i.test(key);
-            const containsLocalizedVariants = /^(name|alt_name|short_name|display_name):/.test(key.toLowerCase());
-            const isCountryKey = /^country$/i.test(key);
+      item.innerHTML = `
+    <div class="me-2">
+      <h6 class="mb-1 fw-semibold">${displayKey}</h6>
+      <p class="small mb-1">${displayValue}</p>
+    </div>`;
+      list.appendChild(item);
+    });
 
-            const isExcluded =
-                EXCLUDED_PROPS.has(key) ||
-                containsAltName ||
-                containsLocalizedVariants ||
-                isCountryKey;
+    globals.detailsCtx.latlng = latlng;
+    globals.detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
 
-            if (!isExcluded) {
-                const item = document.createElement("div");
-                item.className = "list-group-item d-flex justify-content-between align-items-start";
-                let displayKey = key === "display_name"
-                    ? "Address"
-                    : key.replace(/^Addr_?/i, "").replace(/[_:]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                const displayValue = String(value)
-                    .replace(/[_:]/g, " ")
-                    .replace(/\b\w/g, c => c.toUpperCase());
-                item.innerHTML = `
-        <div class="me-2">
-          <h6 class="mb-1 fw-semibold">${displayKey}</h6>
-          <p class="small mb-1">${displayValue}</p>
-        </div>`;
-                list.appendChild(item);
-            }
+    // ✅ Ensure the place exists before fetching reviews
+    let uuid = null;
+    try {
+      uuid = await ensurePlaceExists(tags, latlng);
+      globals.detailsCtx.placeId = uuid;
+      console.log("✅ globals.detailsCtx.placeId (UUID):", uuid);
+    } catch (err) {
+      console.warn("⚠️ ensurePlaceExists failed, skipping reviews:", err);
+      globals.detailsCtx.placeId = null; // still allow photos to load
+    }
+    globals.detailsCtx.placeId = uuid;
+    console.log("✅ globals.detailsCtx.placeId (UUID):", uuid);
+
+    // ✅ Give Supabase a short delay to confirm record visibility (important for free tier)
+    await new Promise((r) => setTimeout(r, 10));
+
+    // ✅ Fetch reviews ONCE (with small retry for consistency)
+    const key = showLoading("reviews-load");
+    globals.reviews = [];
+    try {
+      let retries = 3;
+      while (retries-- > 0) {
+        const data = await reviewStorage("GET", {
+          place_id: globals.detailsCtx.placeId,
         });
-
-        detailsCtx.latlng = latlng;
-
-        // ✅ Ensure the place exists before fetching reviews
-        let uuid = null;
-        try {
-            uuid = await ensurePlaceExists(tags, latlng);
-            detailsCtx.placeId = uuid;
-            console.log("✅ detailsCtx.placeId (UUID):", uuid);
-        } catch (err) {
-            console.warn("⚠️ ensurePlaceExists failed, skipping reviews:", err);
-            detailsCtx.placeId = null; // still allow photos to load
+        if (data?.length || retries === 0) {
+          globals.reviews = data;
+          break;
         }
-        detailsCtx.placeId = uuid;
-        console.log("✅ detailsCtx.placeId (UUID):", uuid);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    } finally {
+      hideLoading(key);
+    }
 
-        // ✅ Give Supabase a short delay to confirm record visibility (important for free tier)
-        await new Promise(r => setTimeout(r, 300));
+    // ✅ Render reviews
+    elements.reviewsList.innerHTML = "";
+    if (globals.reviews.length === 0) {
+      const emptyMsg = document.createElement("li");
+      emptyMsg.className = "list-group-item text-muted";
+      emptyMsg.textContent = "No reviews yet.";
+      elements.reviewsList.appendChild(emptyMsg);
+    } else {
+      globals.reviews.forEach((r) => renderOneReview(r.comment));
+    }
 
-        // ✅ Fetch reviews ONCE (with small retry for consistency)
-        const key = showLoading("reviews-load");
-        let reviewsData = [];
-        try {
-            let retries = 3;
-            while (retries-- > 0) {
-                const data = await reviewStorage("GET", { place_id: detailsCtx.placeId });
-                if (data?.length || retries === 0) {
-                    reviewsData = data;
-                    break;
-                }
-                await new Promise(r => setTimeout(r, 600));
-            }
-        } finally {
-            hideLoading(key);
-        }
+    // ✅ Handle layout and offcanvas
+    if (!keepDirectionsUi) directionsUi.classList.add("d-none");
+    moveDepartureSearchBarUnderTo();
+    mountInOffcanvas(titleText);
 
-        // ✅ Render reviews
-        reviewsListEl.innerHTML = "";
-        if (reviewsData.length === 0) {
-            const emptyMsg = document.createElement("li");
-            emptyMsg.className = "list-group-item text-muted";
-            emptyMsg.textContent = "No reviews yet.";
-            reviewsListEl.appendChild(emptyMsg);
-        } else {
-            reviewsData.forEach(r => renderOneReview(r.comment));
-        }
+    // --- Photos ---
+    try {
+      const keyPhotos = showLoading("photos-load");
+      const photos = await resolvePlacePhotos(tags, latlng);
 
-        // ✅ Handle layout and offcanvas
-        if (!keepDirectionsUi) directionsUi.classList.add("d-none");
-        moveDepartureSearchBarUnderTo();
-        mountInOffcanvas(titleText);
+      console.log(
+        "📷 resolvePlacePhotos returned",
+        photos.length,
+        "items:",
+        photos
+      );
+      showMainPhoto(photos[0]);
+      renderPhotosGrid(photos);
+      hideLoading(keyPhotos);
+    } catch (err) {
+      console.warn("Photo resolution failed", err);
+      showMainPhoto(null);
+      renderPhotosGrid([]);
+    }
 
-        // --- Photos ---
-        try {
-            const keyPhotos = showLoading("photos-load");
-            const photos = await resolvePlacePhotos(tags, latlng);
+    recomputePlaceAccessibilityKeywords().catch(console.error);
+  };
 
-            console.log("📷 resolvePlacePhotos returned", photos.length, "items:", photos);
-            showMainPhoto(photos[0]);
-            renderPhotosGrid(photos);
-            hideLoading(keyPhotos);
-        } catch (err) {
-            console.warn("Photo resolution failed", err);
-            showMainPhoto(null);
-            renderPhotosGrid([]);
-        }
-    };
-
-function makeCircleFeature(layer) {
+  function makeCircleFeature(layer) {
     const center = layer.getLatLng();
     const radius = layer.getRadius(); // meters
     return {
-        type: "Feature",
-        properties: { radius },
-        geometry: { type: "Point", coordinates: [center.lng, center.lat] },
+      type: "Feature",
+      properties: { radius },
+      geometry: { type: "Point", coordinates: [center.lng, center.lat] },
     };
-}
+  }
 
-// ================= INIT OBSTACLES =================
-async function initDrawingObstacles() {
+  // ================= INIT OBSTACLES =================
+  async function initDrawingObstacles() {
     const key = showLoading("obstacles-load");
     try {
-        obstacleFeatures = await obstacleStorage();
+      obstacleFeatures = await obstacleStorage();
     } finally {
-        hideLoading(key);
+      hideLoading(key);
     }
 
     // 🧩 Log all obstacle IDs for debugging
@@ -679,72 +824,75 @@ async function initDrawingObstacles() {
             geometry: row.geometry,
         };
 
-        let layer;
-        if (feature.properties.shape === "circle") {
-            const [lng, lat] = feature.geometry.coordinates;
-            layer = L.circle([lat, lng], {
-                radius: feature.properties.radius || 10,
-                color: "red",
-            });
-        } else if (feature.properties.shape === "rectangle") {
-            const bounds = L.geoJSON(feature).getBounds();
-            layer = L.rectangle(bounds, { color: "red" });
-        } else {
-            layer = L.geoJSON(feature, { style: { color: "red" } }).getLayers()[0];
-        }
+      let layer;
+      if (feature.properties.shape === "circle") {
+        const [lng, lat] = feature.geometry.coordinates;
+        layer = L.circle([lat, lng], {
+          radius: feature.properties.radius || 10,
+          color: "red",
+        });
+      } else if (feature.properties.shape === "rectangle") {
+        const bounds = L.geoJSON(feature).getBounds();
+        layer = L.rectangle(bounds, { color: "red" });
+      } else {
+        layer = L.geoJSON(feature, { style: { color: "red" } }).getLayers()[0];
+      }
 
-        layer.options.obstacleId = feature.properties.obstacleId;
-        drawnItems.addLayer(layer);
-        hookLayerInteractions(layer, feature.properties);
+      layer.options.obstacleId = feature.properties.obstacleId;
+      drawnItems.addLayer(layer);
+      hookLayerInteractions(layer, feature.properties);
     });
 
     map.addLayer(drawnItems);
 
     drawControl = new L.Control.Draw({
-        position: "topright",
-        edit: { featureGroup: drawnItems },
-        draw: {
-            polyline: { shapeOptions: { color: "red" } },
-            polygon: { allowIntersection: false, shapeOptions: { color: "red" } },
-            rectangle: { shapeOptions: { color: "red" } },
-            circle: { shapeOptions: { color: "red" } },
-            marker: false,
-            circlemarker: false,
-        },
+      position: "topright",
+      edit: { featureGroup: drawnItems },
+      draw: {
+        polyline: { shapeOptions: { color: "red" } },
+        polygon: { allowIntersection: false, shapeOptions: { color: "red" } },
+        rectangle: { shapeOptions: { color: "red" } },
+        circle: { shapeOptions: { color: "red" } },
+        marker: false,
+        circlemarker: false,
+      },
     });
     toggleObstaclesByZoom();
 
     // CREATE
     map.on(L.Draw.Event.CREATED, async (e) => {
-        let layerToAdd, featureToStore;
+      let layerToAdd, featureToStore;
 
-        if (e.layer instanceof L.Circle) {
-            featureToStore = makeCircleFeature(e.layer);
-            layerToAdd = L.circle(e.layer.getLatLng(), {
-                radius: e.layer.getRadius(),
-                color: "red",
-            });
-        } else {
-            featureToStore = e.layer.toGeoJSON();
-            layerToAdd = e.layer;
-        }
+      if (e.layer instanceof L.Circle) {
+        featureToStore = makeCircleFeature(e.layer);
+        layerToAdd = L.circle(e.layer.getLatLng(), {
+          radius: e.layer.getRadius(),
+          color: "red",
+        });
+      } else {
+        featureToStore = e.layer.toGeoJSON();
+        layerToAdd = e.layer;
+      }
 
-        drawnItems.addLayer(layerToAdd);
-        const result = await showObstacleModal();
+      drawnItems.addLayer(layerToAdd);
+      const result = await showObstacleModal();
 
-        if (!result) {
-            drawnItems.removeLayer(layerToAdd);
-            return;
-        }
+      if (!result) {
+        drawnItems.removeLayer(layerToAdd);
+        return;
+      }
 
-        featureToStore.properties = {
-            ...(featureToStore.properties || {}),
-            title: result.title,
-            shape: e.layerType,
-        };
+      featureToStore.properties = {
+        ...(featureToStore.properties || {}),
+        title: result.title,
+        shape: e.layerType,
+      };
 
-        hookLayerInteractions(layerToAdd, featureToStore.properties);
-        attachBootstrapTooltip(layerToAdd, tooltipTextFromProps(featureToStore.properties));
+      hookLayerInteractions(layerToAdd, featureToStore.properties);
+      attachBootstrapTooltip(
+        layerToAdd,
+        tooltipTextFromProps(featureToStore.properties)
+      );
 
         const key = showLoading("obstacles-put");
         try {
@@ -760,36 +908,41 @@ async function initDrawingObstacles() {
                 ])
                 .select();
 
-            if (error) throw error;
+        if (error) throw error;
 
-            const newObstacle = data[0];
-            layerToAdd.options.obstacleId = newObstacle.id;
-            obstacleFeatures.push({
-                type: "Feature",
-                properties: {
-                    obstacleId: newObstacle.id,
-                    shape: newObstacle.type,
-                    title: newObstacle.description,
-                },
-                geometry: newObstacle.geometry,
-            });
-            console.log("✅ Inserted new obstacle:", newObstacle.id);
-        } catch (err) {
-            console.error("❌ Failed to save obstacle:", err);
-            drawnItems.removeLayer(layerToAdd);
-            toastError("Could not save obstacle.");
-        } finally {
-            hideLoading(key);
-        }
+        const newObstacle = data[0];
+        layerToAdd.options.obstacleId = newObstacle.id;
+        obstacleFeatures.push({
+          type: "Feature",
+          properties: {
+            obstacleId: newObstacle.id,
+            shape: newObstacle.type,
+            title: newObstacle.description,
+          },
+          geometry: newObstacle.geometry,
+        });
+        console.log("✅ Inserted new obstacle:", newObstacle.id);
+      } catch (err) {
+        console.error("❌ Failed to save obstacle:", err);
+        drawnItems.removeLayer(layerToAdd);
+        toastError("Could not save obstacle.");
+      } finally {
+        hideLoading(key);
+      }
     });
 
     // EDIT
     map.on(L.Draw.Event.EDITED, async (e) => {
-        e.layers.eachLayer(async (layer) => {
-            const id = layer.options.obstacleId;
-            const updated = layer instanceof L.Circle ? makeCircleFeature(layer) : layer.toGeoJSON();
-            const existing = obstacleFeatures.find((f) => f.properties.obstacleId === id);
-            if (!existing) return;
+      e.layers.eachLayer(async (layer) => {
+        const id = layer.options.obstacleId;
+        const updated =
+          layer instanceof L.Circle
+            ? makeCircleFeature(layer)
+            : layer.toGeoJSON();
+        const existing = obstacleFeatures.find(
+          (f) => f.properties.obstacleId === id
+        );
+        if (!existing) return;
 
             existing.geometry = updated.geometry;
             try {
@@ -810,60 +963,59 @@ async function initDrawingObstacles() {
 
     // DELETE
     map.on(L.Draw.Event.DELETED, async (e) => {
-        e.layers.eachLayer(async (layer) => {
-            const id =
-                layer?.options?.obstacleId ||
-                layer?.feature?.properties?.obstacleId ||
-                layer?.feature?.id ||
-                null;
+      e.layers.eachLayer(async (layer) => {
+        const id =
+          layer?.options?.obstacleId ||
+          layer?.feature?.properties?.obstacleId ||
+          layer?.feature?.id ||
+          null;
 
-            if (!id) {
-                console.warn("⚠️ Skipping layer without obstacleId:", layer);
-                return;
-            }
-
-            // Safely filter local list
-            obstacleFeatures = obstacleFeatures.filter(
-                (f) => f?.properties?.obstacleId !== id
-            );
-
-            try {
-                console.log("🚀 Deleting from Supabase with ID:", id);
-                await obstacleStorage("DELETE", { id });
-                console.log("🗑️ Deleted obstacle:", id);
-            } catch (err) {
-                console.error("❌ Failed to delete obstacle:", err);
-                toastError("Could not delete obstacle.");
-            }
-        });
-    });
-} // ✅ end of initDrawingObstacles()
-
-
-// ============= MAP INIT =============
-const map = L.map("map", { zoomControl: false });
-
-const initialName = ls.get(BASEMAP_LS_KEY) || "OSM";
-let currentBasemapLayer = baseLayers[initialName] || osm;
-currentBasemapLayer.addTo(map);
-
-if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const { latitude, longitude } = pos.coords;
-            map.setView([latitude, longitude], DEFAULT_ZOOM);
-            L.marker([latitude, longitude]).addTo(map);
-        },
-        () => {
-            map.setView([50.4501, 30.5234], DEFAULT_ZOOM); // Kyiv
+        if (!id) {
+          console.warn("⚠️ Skipping layer without obstacleId:", layer);
+          return;
         }
-    );
-} else {
-    map.setView([50.4501, 30.5234], DEFAULT_ZOOM);
-}
 
-// ============= EVENT LISTENERS =============
-map.whenReady(async () => {
+        // Safely filter local list
+        obstacleFeatures = obstacleFeatures.filter(
+          (f) => f?.properties?.obstacleId !== id
+        );
+
+        try {
+          console.log("🚀 Deleting from Supabase with ID:", id);
+          await obstacleStorage("DELETE", { id });
+          console.log("🗑️ Deleted obstacle:", id);
+        } catch (err) {
+          console.error("❌ Failed to delete obstacle:", err);
+          toastError("Could not delete obstacle.");
+        }
+      });
+    });
+  } // ✅ end of initDrawingObstacles()
+
+  // ============= MAP INIT =============
+  const map = L.map("map", { zoomControl: false });
+
+  const initialName = ls.get(BASEMAP_LS_KEY) || "OSM";
+  let currentBasemapLayer = baseLayers[initialName] || osm;
+  currentBasemapLayer.addTo(map);
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        map.setView([latitude, longitude], DEFAULT_ZOOM);
+        L.marker([latitude, longitude]).addTo(map);
+      },
+      () => {
+        map.setView([50.4501, 30.5234], DEFAULT_ZOOM); // Kyiv
+      }
+    );
+  } else {
+    map.setView([50.4501, 30.5234], DEFAULT_ZOOM);
+  }
+
+  // ============= EVENT LISTENERS =============
+  map.whenReady(async () => {
     // console.log("✅ Leaflet map ready, initializing places...");
     placesPane = map.createPane("places-pane");
     placesPane.style.zIndex = 450;
@@ -885,71 +1037,70 @@ map.whenReady(async () => {
     map.on("baselayerchange", (e) => ls.set(BASEMAP_LS_KEY, e.name));
     map.on("zoomend", toggleObstaclesByZoom);
     map.on("click", (e) => {
-        if (drawState.editing || drawState.deleting) return;
-        showQuickRoutePopup(e.latlng);
-
+      if (drawState.editing || drawState.deleting) return;
+      showQuickRoutePopup(e.latlng);
     });
-    // ✅ ensure first batch loads immediately
-    await refreshPlaces();
-});
+  });
 
-function renderDepartureSuggestions(items) {
-    departureSuggestionsEl.innerHTML = "";
+  function renderDepartureSuggestions(items) {
+    elements.departureSuggestions.innerHTML = "";
     if (!items || !items.length) {
-        toggleDepartureSuggestions(false);
-        return;
+      toggleDepartureSuggestions(false);
+      return;
     }
     items.forEach((res, idx) => {
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
-            "list-group-item list-group-item-action list-group-item-light";
-        btn.role = "option";
-        btn.dataset.index = String(idx);
-        btn.textContent = res.name;
-        btn.addEventListener("click", () => selectDepartureSuggestion(items[idx]));
-        li.appendChild(btn);
-        departureSuggestionsEl.appendChild(li);
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "list-group-item list-group-item-action list-group-item-light";
+      btn.role = "option";
+      btn.dataset.index = String(idx);
+      btn.textContent = res.name;
+      btn.addEventListener("click", () =>
+        selectDepartureSuggestion(items[idx])
+      );
+      li.appendChild(btn);
+      elements.departureSuggestions.appendChild(li);
     });
     toggleDepartureSuggestions(true);
-}
+  }
 
-function renderDestinationSuggestions(items) {
-    destinationSuggestionsEl.innerHTML = "";
+  function renderDestinationSuggestions(items) {
+    elements.destinationSuggestions.innerHTML = "";
     if (!items || !items.length) {
-        toggleDestinationSuggestions(false);
-        return;
+      toggleDestinationSuggestions(false);
+      return;
     }
     items.forEach((res, idx) => {
-        const li = document.createElement("li");
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className =
-            "list-group-item list-group-item-action list-group-item-light";
-        btn.role = "option";
-        btn.dataset.index = String(idx);
-        btn.textContent = res.name;
-        btn.addEventListener("click", () =>
-            selectDestinationSuggestion(items[idx])
-        );
-        li.appendChild(btn);
-        destinationSuggestionsEl.appendChild(li);
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "list-group-item list-group-item-action list-group-item-light";
+      btn.role = "option";
+      btn.dataset.index = String(idx);
+      btn.textContent = res.name;
+      btn.addEventListener("click", () =>
+        selectDestinationSuggestion(items[idx])
+      );
+      li.appendChild(btn);
+      elements.destinationSuggestions.appendChild(li);
     });
     toggleDestinationSuggestions(true);
-}
+  }
 
-function attachDraggable(marker, onMove) {
+  function attachDraggable(marker, onMove) {
     marker.on("dragend", async (e) => {
-        const ll = e.target.getLatLng();
-        await onMove(ll);
+      const ll = e.target.getLatLng();
+      await onMove(ll);
     });
-}
+  }
 
-function clearRoute() {
+  function clearRoute() {
     if (routeLayer) {
-        map.removeLayer(routeLayer);
-        routeLayer = null;
+      map.removeLayer(routeLayer);
+      routeLayer = null;
     }
 }
     async function updateRoute({fit = true} = {}) {
@@ -1013,15 +1164,15 @@ function clearRoute() {
         attachDraggable(fromMarker, async (ll) => {
             console.log("🌀 fromMarker dragged to:", ll);
             fromLatLng = ll;
-            departureSearchInput.value = await reverseAddressAt(ll);
+            elements.departureSearchInput.value = await reverseAddressAt(ll);
             updateRoute({ fit: false });
         });
 
         const address = await reverseAddressAt(latlng);
         console.log("📍 reverseAddressAt() returned:", address);
-        departureSearchInput.value = text ?? address;
+        elements.departureSearchInput.value = text ?? address;
 
-        console.log("✅ departureSearchInput.value now:", departureSearchInput.value);
+        console.log("✅ departureSearchInput.value now:", elements.departureSearchInput.value);
 
         // 🧭 Only trigger routing when both endpoints exist
         if (toLatLng && fromLatLng) {
@@ -1049,7 +1200,7 @@ function clearRoute() {
             }).addTo(map);
             attachDraggable(toMarker, async (ll) => {
                 toLatLng = ll;
-                destinationSearchInput.value = await reverseAddressAt(ll);
+                elements.destinationSearchInput.value = await reverseAddressAt(ll);
                 if (toLatLng && fromLatLng) {
                     await updateRoute(opts);
                 } else {
@@ -1058,7 +1209,7 @@ function clearRoute() {
             });
         }
 
-        destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
+        elements.destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
         updateRoute(opts);
     }
 
@@ -1078,150 +1229,99 @@ function clearRoute() {
         });
     }
 
-async function selectDepartureSuggestion(res) {
+  async function selectDepartureSuggestion(res) {
     toggleDepartureSuggestions(false);
     await setFrom(res.center, res.name);
-}
+  }
 
-    async function selectDestinationSuggestion(res) {
-        toggleDestinationSuggestions(false);
+  async function selectDestinationSuggestion(res) {
+    toggleDestinationSuggestions(false);
 
-        if (selectedPlaceLayer) map.removeLayer(selectedPlaceLayer);
+    if (selectedPlaceLayer) map.removeLayer(selectedPlaceLayer);
 
-        showDetailsLoading(
-            detailsPanel,
-            res.name ?? "Details",
-            moveDepartureSearchBarUnderTo,
-            mountInOffcanvas
-        );
+    showDetailsLoading(
+      elements.detailsPanel,
+      res.name ?? "Details",
+      moveDepartureSearchBarUnderTo,
+      mountInOffcanvas
+    );
 
-        const key = showLoading("place-select");
+    const key = showLoading("place-select");
 
-        try {
-            const osmType = res.properties.osm_type;
-            const osmId = res.properties.osm_id;
+    try {
+      const osmType = res.properties.osm_type;
+      const osmId = res.properties.osm_id;
 
-            // 🗺️ Draw outline or marker
-            const geojsonGeometry = await fetchPlaceGeometry(osmType, osmId);
-            const polyLike =
-                geojsonGeometry.features.find(
-                    (f) => f.geometry && f.geometry.type !== "Point"
-                ) || null;
+      // 🗺️ Draw outline or marker
+      const geojsonGeometry = await fetchPlaceGeometry(osmType, osmId);
+      const polyLike =
+        geojsonGeometry.features.find(
+          (f) => f.geometry && f.geometry.type !== "Point"
+        ) || null;
 
-            if (polyLike) {
-                selectedPlaceLayer = L.geoJSON(geojsonGeometry, {
-                    style: {
-                        color: "#d33",
-                        weight: 2,
-                        opacity: 0.8,
-                        fillColor: "#f03",
-                        fillOpacity: 0.1,
-                        dashArray: "6,4",
-                    },
-                }).addTo(map);
-                map.fitBounds(selectedPlaceLayer.getBounds());
-            } else {
-                const icon = waypointDivIcon("", WP_COLORS.end);
-                selectedPlaceLayer = L.marker(res.center, { icon, keyboard: false, interactive: false })
-                    .addTo(map);
-                map.setView(selectedPlaceLayer.getLatLng(), 18);
-            }
+      if (polyLike) {
+        selectedPlaceLayer = L.geoJSON(geojsonGeometry, {
+          style: {
+            color: "#d33",
+            weight: 2,
+            opacity: 0.8,
+            fillColor: "#f03",
+            fillOpacity: 0.1,
+            dashArray: "6,4",
+          },
+        }).addTo(map);
+        map.fitBounds(selectedPlaceLayer.getBounds());
+      } else {
+        const icon = waypointDivIcon("", WP_COLORS.end);
+        selectedPlaceLayer = L.marker(res.center, {
+          icon,
+          keyboard: false,
+          interactive: false,
+        }).addTo(map);
+        map.setView(selectedPlaceLayer.getLatLng(), 18);
+      }
 
-            await setTo(res.center, res.name);
+      await setTo(res.center, res.name);
 
-            // 🧭 STEP 1: basic Photon tags
-            let tags = res.properties.tags || res.properties || {};
-            console.log("🔍 Photon basic tags:", tags);
+      // 🧭 STEP 1: basic Photon tags
+      let tags = res.properties.tags || res.properties || {};
+      console.log("🔍 Photon basic tags:", tags);
 
-            // 🧭 STEP 2: fetch Overpass enrichment
-            const enriched = await fetchPlace(osmType, osmId); // uses Overpass
-            tags = { ...tags, ...enriched };
-            console.log("📦 Enriched tags:", tags);
+      // 🧭 STEP 2: fetch Overpass enrichment
+      const enriched = await fetchPlace(osmType, osmId); // uses Overpass
+      tags = { ...tags, ...enriched };
+      console.log("📦 Enriched tags:", tags);
 
-            // 🧭 STEP 3: render all details, photos, reviews, etc.
-            renderDetails(tags, res.center);
-        } catch (err) {
-            console.error("❌ selectDestinationSuggestion failed", err);
-        } finally {
-            hideLoading(key);
-        }
+      // 🧭 STEP 3: render all details, photos, reviews, etc.
+      renderDetails(tags, res.center);
+    } catch (err) {
+      console.error("❌ selectDestinationSuggestion failed", err);
+    } finally {
+      hideLoading(key);
     }
+  }
 
-// Also hide on Escape
-departureSearchInput.addEventListener("keydown", (e) => {
+  // Also hide on Escape
+  elements.departureSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleDepartureSuggestions(false);
-});
-destinationSearchInput.addEventListener("keydown", (e) => {
+  });
+  elements.destinationSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleDestinationSuggestions(false);
-});
+  });
 
-let destinationGeocodeReqSeq = 0;
-destinationSearchInput.addEventListener(
+  let destinationGeocodeReqSeq = 0;
+  elements.destinationSearchInput.addEventListener(
     "input",
     debounce((e) => {
-        console.log("🎯 debounce triggered for query:", e.target.value);
-        const searchQuery = e.target.value.trim();
+      console.log("🎯 debounce triggered for query:", e.target.value);
+      const searchQuery = e.target.value.trim();
 
-        if (!searchQuery) {
-            toggleDestinationSuggestions(false);
-            return;
-        }
-
-        const mySeq = ++destinationGeocodeReqSeq;
-        showListSpinner(destinationSuggestionsEl, "Searching…");
-
-        // console.log("📡 sending Photon request for:", searchQuery);
-        geocoder.geocode(searchQuery, (items) => {
-            if (mySeq !== destinationGeocodeReqSeq) return;
-
-            // console.log("🌍 Photon geocode result for destination:", searchQuery, items);
-
-            renderDestinationSuggestions(items);
-
-            if (!items?.length) {
-                destinationSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-                destinationSuggestionsEl.classList.remove("d-none");
-            }
-        });
-    }, 200)
-);
-
-let departureGeocodeReqSeq = 0;
-departureSearchInput.addEventListener(
-    "input",
-    debounce((e) => {
-        const searchQuery = e.target.value.trim();
-        if (!searchQuery) {
-            toggleDepartureSuggestions(false);
-            return;
-        }
-        const mySeq = ++departureGeocodeReqSeq;
-        showListSpinner(departureSuggestionsEl, "Searching…");
-
-        geocoder.geocode(searchQuery, (items) => {
-            if (mySeq !== departureGeocodeReqSeq) return;
-            console.log("🚀 Photon geocode result for departure:", searchQuery, items);
-            renderDepartureSuggestions(items);
-            if (!items?.length) {
-                departureSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-                departureSuggestionsEl.classList.remove("d-none");
-            }
-        });
-    }, 200)
-);
-
-const hideSuggestionsIfClickedOutside = (e) => {
-    if (!departureSearchBar.contains(e.target)) {
-        toggleDepartureSuggestions(false);
-    }
-
-    if (!destinationSearchBar.contains(e.target)) {
+      if (!searchQuery) {
         toggleDestinationSuggestions(false);
-    }
-};
-document.addEventListener("click", hideSuggestionsIfClickedOutside);
+        return;
+      }
 
-    detailsPanel
+    elements.detailsPanel
         .querySelector("#btn-start-here")
         .addEventListener("click", async () => {
             // ✅ Ensure directions UI is visible
@@ -1234,7 +1334,7 @@ document.addEventListener("click", hideSuggestionsIfClickedOutside);
                 toMarker = null;
                 toLatLng = null;
             }
-            destinationSearchInput.value = "";
+            elements.destinationSearchInput.value = "";
 
             // 🧹 Also clear any highlighted place polygon or marker
             if (selectedPlaceLayer) {
@@ -1246,57 +1346,70 @@ document.addEventListener("click", hideSuggestionsIfClickedOutside);
             await setFrom(detailsCtx.latlng, detailsCtx.tags?.name || "Selected place");
 
             // ✅ Focus on "From" input for user clarity
-            departureSearchInput.focus();
+            elements.departureSearchInput.focus();
         });
 
-detailsPanel
+  elements.detailsPanel
     .querySelector("#btn-go-here")
     .addEventListener("click", async () => {
-        directionsUi.classList.remove("d-none");
-        mountInOffcanvas("Directions");
-        await setTo(detailsCtx.latlng);
-        departureSearchInput.focus();
+      directionsUi.classList.remove("d-none");
+      mountInOffcanvas("Directions");
+      await setTo(globals.detailsCtx.latlng);
+      elements.departureSearchInput.focus();
     });
 
-    reviewForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const textarea = reviewForm.querySelector("#review-text");
-        const text = textarea.value.trim();
-        if (!text) return;
+  elements.reviewForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const textarea = elements.reviewForm.querySelector("#review-text");
+    const text = textarea.value.trim();
+    if (!text) return;
 
-        try {
-            console.log("🧭 Review submit ctx:", detailsCtx);
-            const placeId = detailsCtx.placeId ?? (await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng));
-            const newReview = { text, place_id: placeId };
+    try {
+      console.log("🧭 Review submit ctx:", globals.detailsCtx);
+      const placeId =
+        globals.detailsCtx.placeId ??
+        (await ensurePlaceExists(
+          globals.detailsCtx.tags,
+          globals.detailsCtx.latlng
+        ));
+      const newReview = { text, place_id: placeId };
 
-            await withButtonLoading(
-                submitReviewBtn,
-                reviewStorage("POST", newReview),
-                "Saving…"
-            );
+      await withButtonLoading(
+        elements.submitReviewBtn,
+        reviewStorage("POST", newReview),
+        "Saving…"
+      );
 
-            // ✅ Reload and render updated reviews list
-            const updated = await reviewStorage("GET", { place_id: placeId });
-            reviewsListEl.innerHTML = "";
-            updated.forEach((r) => renderOneReview(r.comment));
+      // ✅ Reload and render updated reviews list
+      globals.reviews = await reviewStorage("GET", { place_id: placeId });
+      elements.reviewsList.innerHTML = "";
+      globals.reviews.forEach((r) => renderOneReview(r.comment));
 
-            textarea.value = "";
-        } catch (error) {
-            console.error("❌ Failed to save review:", error);
-            toastError("Could not save your review. Please try again.");
-        }
-    });
+      textarea.value = "";
 
-// ✅ Global — must be OUTSIDE the submit handler
-    document.addEventListener("accessibilityFilterChanged", (e) => {
-        const incoming = e.detail;
+      recomputePlaceAccessibilityKeywords().catch(console.error);
+    } catch (error) {
+      console.error("❌ Failed to save review:", error);
+      toastError("Could not save your review. Please try again.");
+    }
+  });
 
-        if (!incoming || !incoming.length) {
-            accessibilityFilter = new Set(["designated", "yes", "limited", "unknown", "no"]);
-        } else {
-            accessibilityFilter = new Set(incoming);
-        }
+  // ✅ Global — must be OUTSIDE the submit handler
+  document.addEventListener("accessibilityFilterChanged", (e) => {
+    const incoming = e.detail;
 
-        refreshPlaces();
-    });
+    if (!incoming || !incoming.length) {
+      accessibilityFilter = new Set([
+        "designated",
+        "yes",
+        "limited",
+        "unknown",
+        "no",
+      ]);
+    } else {
+      accessibilityFilter = new Set(incoming);
+    }
+
+    refreshPlaces();
+  });
 }

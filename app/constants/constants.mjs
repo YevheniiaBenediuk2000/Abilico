@@ -20,13 +20,6 @@ export const EXCLUDED_PROPS = new Set([
   "created_by",
 ]);
 
-const isLocal =
-    typeof window !== "undefined" && window.location.protocol === "http:";
-
-export const BASE_PATH = isLocal
-    ? "../map-icons-osm"
-    : "https://yevheniiabenediuk2000.github.io/Abilico/map-icons-osm";
-
 export const pRetryConfig = { retries: 3, factor: 2, minTimeout: 400 };
 
 export const SIZE_BY_TIER = {
@@ -50,9 +43,33 @@ export const placeClusterConfig = {
 };
 
 export const BADGE_COLOR_BY_TIER = {
-  designated: "#22c55e", // green
-  yes:        "#16a34a", // green (darker)
-  limited:    "#f59e0b", // amber
-  unknown:    "#94a3b8", // slate
-  no:         "#ef4444", // red
+  designated: "#16a34a", // green
+  yes: "#6cc24a", // green (darker)
+  limited: "var(--bs-warning)", // amber
+  unknown: "var(--bs-tertiary-color)", // slate
+  no: "var(--bs-danger)", // red
 };
+
+export const ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD = 0.985;
+
+export const ACCESSIBILITY_LABELS_IN_REVIEWS = [
+  // Entrance & approach
+  "step-free entrance",
+  "stairs at entrance",
+  "ramp",
+  "automatic door",
+  "wide doorway",
+  "narrow doorway",
+
+  // Interior circulation
+  "elevator",
+  "broken elevator",
+
+  // Restrooms
+  "accessible toilet",
+  "no accessible toilet",
+
+  // Parking & transport
+  "accessible parking",
+  "no accessible parking",
+];

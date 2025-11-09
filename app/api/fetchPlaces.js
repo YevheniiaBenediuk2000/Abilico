@@ -1,10 +1,10 @@
 import pRetry from "p-retry";
-import { pRetryConfig, SHOW_PLACES_ZOOM } from "../constants.mjs";
+import { pRetryConfig, SHOW_PLACES_ZOOM } from "../constants/constants.mjs";
 import osmtogeojson from "osmtogeojson";
 
 const OVERPASS_ENDPOINTS = [
-  "https://overpass.osm.jp/api/interpreter",
   "https://overpass-api.de/api/interpreter",
+  "https://overpass.osm.jp/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
 ];
 
@@ -31,18 +31,23 @@ export async function fetchPlaceGeometry(osmType, osmId) {
     // console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          body: query,
-          signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: query,
+            signal,
+          });
+          if (!response.ok)
+            throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
+          const data = await response.json();
+          // Convert Overpass JSON to GeoJSON (FeatureCollection)
+          return osmtogeojson(data);
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            return { type: "FeatureCollection", features: [] };
+          }
+          throw error;
         }
-
-        const data = await response.json();
-        return osmtogeojson(data);
       }, pRetryConfig);
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -86,16 +91,23 @@ export async function fetchPlace(osmType, osmId) {
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
       return await pRetry(async () => {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          body: query,
-          signal,
-        });
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: query,
+            signal,
+          });
 
-        if (!response.ok) throw new Error("Overpass " + response.status);
-        const data = await response.json();
+          if (!response.ok) throw new Error("Overpass " + response.status);
+          const data = await response.json();
 
-        return data.elements[0].tags;
+          return data.elements[0].tags;
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            return {};
+          }
+          throw error;
+        }
       }, pRetryConfig);
     } catch (error) {
       if (error?.name === "AbortError") {
@@ -207,41 +219,41 @@ function selectorsForZoom(
 ) {
   // Full fat (your previous set) at close zoom
   const FULL = [
-    `node["amenity"]["name"]["amenity"!~"${AMENITY_EXCLUDED}"]`,
-    `node["shop"]["name"]`,
-    `node["tourism"]["name"]`,
-    `node["leisure"]["name"]["leisure"!~"${LEISURE_EXCLUDED}"]`,
-    `node["healthcare"]["name"]`,
-    `node["building"]["name"]`,
-    `node["office"]["name"]`,
-    `node["craft"]["name"]`,
-    `node["historic"]["name"]`,
-    `node["man_made"]["name"]["man_made"!~"${MAN_MADE_EXCLUDED}"]`,
-    `node["military"]["name"]["military"!~"${MILITARY_EXCLUDED}"]`,
-    `node["sport"]["name"]`,
+    `node["amenity"]["amenity"!~"${AMENITY_EXCLUDED}"]`,
+    `node["shop"]`,
+    `node["tourism"]`,
+    `node["leisure"]["leisure"!~"${LEISURE_EXCLUDED}"]`,
+    `node["healthcare"]`,
+    `node["building"]`,
+    `node["office"]`,
+    `node["craft"]`,
+    `node["historic"]`,
+    `node["man_made"]["man_made"!~"${MAN_MADE_EXCLUDED}"]`,
+    `node["military"]["military"!~"${MILITARY_EXCLUDED}"]`,
+    `node["sport"]`,
   ];
 
   // Medium zoom: most categories, but no super-noisy tails
   const MID = [
-    `node["amenity"]["name"]["amenity"!~"${AMENITY_EXCLUDED}"]`,
-    `node["shop"]["name"]["shop"~"^(${SHOP_FOCUS_LOW.join("|")})$"]`,
-    `node["tourism"]["name"]`,
-    `node["leisure"]["name"]["leisure"!~"${LEISURE_EXCLUDED}"]`,
-    `node["healthcare"]["name"]`,
-    `node["office"]["name"]`,
-    `node["historic"]["name"]`,
-    `node["sport"]["name"]`,
+    `node["amenity"]["amenity"!~"${AMENITY_EXCLUDED}"]`,
+    `node["shop"]["shop"~"^(${SHOP_FOCUS_LOW.join("|")})$"]`,
+    `node["tourism"]`,
+    `node["leisure"]["leisure"!~"${LEISURE_EXCLUDED}"]`,
+    `node["healthcare"]`,
+    `node["office"]`,
+    `node["historic"]`,
+    `node["sport"]`,
     // (omit building/craft/man_made/military at this level)
   ];
 
   // Far zoom: only “important” types to keep counts small
   const LOW = [
-    `node["amenity"]["name"]["amenity"~"^(${AMENITY_FOCUS_LOW.join("|")})$"]`,
-    `node["tourism"]["name"]["tourism"~"^(${TOURISM_FOCUS_LOW.join("|")})$"]`,
-    `node["leisure"]["name"]["leisure"~"^(${LEISURE_FOCUS_LOW.join("|")})$"]`,
-    `node["healthcare"]["name"]["healthcare"~"^(hospital|clinic)$"]`,
-    `node["shop"]["name"]["shop"~"^(${SHOP_FOCUS_LOW.join("|")})$"]`,
-    `node["historic"]["name"]`,
+    `node["amenity"]["amenity"~"^(${AMENITY_FOCUS_LOW.join("|")})$"]`,
+    `node["tourism"]["tourism"~"^(${TOURISM_FOCUS_LOW.join("|")})$"]`,
+    `node["leisure"]["leisure"~"^(${LEISURE_FOCUS_LOW.join("|")})$"]`,
+    `node["healthcare"]["healthcare"~"^(hospital|clinic)$"]`,
+    `node["shop"]["shop"~"^(${SHOP_FOCUS_LOW.join("|")})$"]`,
+    `node["historic"]`,
   ];
 
   // Heuristic bands — tweak to taste
@@ -315,7 +327,9 @@ export async function fetchPlaces(bounds, zoom, options) {
   }
 
   const outLimit = limitForZoom(zoom);
-  const outLine = outLimit ? `out center tags ${outLimit};` : `out center tags;`;
+  const outLine = outLimit
+    ? `out center tags ${outLimit};`
+    : `out center tags;`;
 
   const query = `
     [out:json][timeout:180];
@@ -331,33 +345,40 @@ export async function fetchPlaces(bounds, zoom, options) {
     // console.log(`🌍 Trying Overpass endpoint: ${endpoint}`);
     try {
       return await pRetry(async () => {
-        // console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
-        const response = await fetch(endpoint, {
-          method: "POST",
-          body: query,
-          signal,
-        });
+        try {
+          // console.log("📡 POST →", endpoint, "query:", query.slice(0, 300));
+          const response = await fetch(endpoint, {
+            method: "POST",
+            body: query,
+            signal,
+          });
 
-        if (!response.ok) {
-          throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
+          if (!response.ok) {
+            throw new Error(`Overpass error ${response.status} @ ${endpoint}`);
+          }
+
+          const data = await response.json();
+          console.log(data);
+          return osmtogeojson(data);
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            return { type: "FeatureCollection", features: [] };
+          }
+          throw error;
         }
-
-        const data = await response.json();
-        // console.log(data);
-        return osmtogeojson(data);
       }, pRetryConfig);
     } catch (error) {
-    console.error("❌ Overpass fetch failed:", error);
-    if (error?.name === "AbortError") {
-      return;
+      console.error("❌ Overpass fetch failed:", error);
+      if (error?.name === "AbortError") {
+        return { type: "FeatureCollection", features: [] };
+      }
+      lastError = error;
+      console.warn(`[Overpass] ${endpoint} failed, trying next…`, error);
     }
-    lastError = error;
-    console.warn(`[Overpass] ${endpoint} failed, trying next…`, error);
-  }
   }
 
   if (lastError?.name === "AbortError") {
-    return;
+    return { type: "FeatureCollection", features: [] };
   }
 
   console.error("Places fetch failed on all Overpass endpoints:", lastError);

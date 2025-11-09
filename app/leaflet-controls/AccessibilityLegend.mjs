@@ -1,6 +1,6 @@
-import { SIZE_BY_TIER } from "../constants.mjs";
+import { SIZE_BY_TIER } from "../constants/constants.mjs";
 import { ls } from "../utils/localStorage.mjs";
-import { BADGE_COLOR_BY_TIER } from "../constants.mjs";
+import { BADGE_COLOR_BY_TIER } from "../constants/constants.mjs";
 
 export const ACCESSIBILITY_FILTER_LS_KEY = "ui.placeAccessibility.filter";
 
@@ -16,7 +16,9 @@ export const AccessibilityLegend = L.Control.extend({
   options: { position: "topright" },
   onAdd() {
     const div = L.DomUtil.create("div", "leaflet-control");
-    const accessibilityLegendEl = document.getElementById("accessibility-legend");
+    const accessibilityLegendEl = document.getElementById(
+      "accessibility-legend"
+    );
 
     // 🧩 If empty, populate the default legend HTML
     if (!accessibilityLegendEl.innerHTML.trim()) {
@@ -25,18 +27,20 @@ export const AccessibilityLegend = L.Control.extend({
         <h6>Place Accessibility</h6>
         <div class="d-flex align-items-center gap-2">
           ${["designated", "yes", "limited", "unknown", "no"]
-          .map(
+            .map(
               (key) => `
                 <input type="checkbox" class="btn-check" id="btn-check-${key}" autocomplete="off" checked />
                 <label class="btn" for="btn-check-${key}" data-bs-toggle="tooltip" data-bs-title="${key}"></label>`
-          )
-          .join("")}
+            )
+            .join("")}
         </div>
       </form>
     `;
     }
 
-    const labels = accessibilityLegendEl.querySelectorAll('[data-bs-toggle="tooltip"]');
+    const labels = accessibilityLegendEl.querySelectorAll(
+      '[data-bs-toggle="tooltip"]'
+    );
 
     labels.forEach((labelEl) => {
       const tier = idToTier.get(labelEl.htmlFor);
@@ -45,7 +49,7 @@ export const AccessibilityLegend = L.Control.extend({
       labelEl.style.width = `${px}px`;
       labelEl.style.height = `${px}px`;
       labelEl.style.backgroundColor =
-          BADGE_COLOR_BY_TIER[tier] ?? BADGE_COLOR_BY_TIER.unknown;
+        BADGE_COLOR_BY_TIER[tier] ?? BADGE_COLOR_BY_TIER.unknown;
 
       new bootstrap.Tooltip(labelEl);
     });
@@ -67,7 +71,7 @@ export const AccessibilityLegend = L.Control.extend({
       ls.set(ACCESSIBILITY_FILTER_LS_KEY, JSON.stringify(activeFilters));
     }
 
-// Apply state to checkboxes
+    // Apply state to checkboxes
     inputs.forEach((inp) => {
       const tier = idToTier.get(inp.id);
       inp.checked = activeFilters.includes(tier);
@@ -75,12 +79,12 @@ export const AccessibilityLegend = L.Control.extend({
 
     const emitChange = () => {
       const tiers = Array.from(inputs)
-          .filter((i) => i.checked)
-          .map((i) => idToTier.get(i.id));
+        .filter((i) => i.checked)
+        .map((i) => idToTier.get(i.id));
 
       ls.set(ACCESSIBILITY_FILTER_LS_KEY, JSON.stringify(tiers));
       document.dispatchEvent(
-          new CustomEvent("accessibilityFilterChanged", { detail: tiers })
+        new CustomEvent("accessibilityFilterChanged", { detail: tiers })
       );
     };
 
