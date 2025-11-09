@@ -53,12 +53,23 @@ export const BADGE_COLOR_BY_TIER = {
 export const ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD = 0.985;
 
 export const ACCESSIBILITY_LABELS_IN_REVIEWS = [
-  "wheelchair access",
+  // Entrance & approach
+  "step-free entrance",
+  "stairs at entrance",
   "ramp",
-  "accessible toilet",
-  "elevator",
-  "accessible parking",
-  "stairs",
-  "wide door",
   "automatic door",
+  "wide doorway",
+  "narrow doorway",
+
+  // Interior circulation
+  "elevator",
+  "broken elevator",
+
+  // Restrooms
+  "accessible toilet",
+  "no accessible toilet",
+
+  // Parking & transport
+  "accessible parking",
+  "no accessible parking",
 ];
