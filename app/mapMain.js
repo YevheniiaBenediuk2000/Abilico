@@ -1,12 +1,9 @@
 // your old Leaflet app logic
 
 // will now just render a wrapper
-// import {
-//   pipeline,
-//   env,
-// } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
 import debounce from "lodash.debounce";
 
+import elements from "./constants/domElements.js";
 import {
   fetchPlace,
   fetchPlaceGeometry,
@@ -20,7 +17,7 @@ import {
   EXCLUDED_PROPS,
   SIZE_BY_TIER,
   placeClusterConfig,
-} from "./constants.mjs";
+} from "./constants/constants.mjs";
 import { toastError, toastWarn } from "./utils/toast.mjs";
 import { waypointDivIcon, WP_COLORS } from "./utils/wayPoints.mjs";
 import {
@@ -46,7 +43,6 @@ import {
   BasemapGallery,
   osm,
 } from "./leaflet-controls/BasemapGallery.mjs";
-import { detailsPanel } from "./utils/commonVariables.mjs";
 import {
   renderPhotosGrid,
   resolvePlacePhotos,
@@ -67,7 +63,10 @@ import {
   toMapillaryViewerUrl,
 } from "./modules/beautifyDetailLinks.js";
 
-const detailsCtx = { latlng: null, placeId: null };
+import { recomputePlaceAccessibilityKeywords } from "./modules/accessibilityKeywordsExtraction.js";
+import globals from "./constants/globalVariables.js";
+
+globals.detailsCtx = { latlng: null, placeId: null };
 
 let accessibilityFilter = new Set([
   "designated",
@@ -115,7 +114,7 @@ export async function initMap() {
         mountInOffcanvas("Directions");
 
         await setFrom(latlng, null, { fit: false });
-        destinationSearchInput.focus();
+        elements.destinationSearchInput.focus();
       } finally {
         map.closePopup(clickPopup);
       }
@@ -129,7 +128,7 @@ export async function initMap() {
         mountInOffcanvas("Directions");
 
         await setTo(latlng, null, { fit: false });
-        departureSearchInput.focus();
+        elements.departureSearchInput.focus();
       } finally {
         map.closePopup(clickPopup);
       }
@@ -147,26 +146,6 @@ export async function initMap() {
   const drawState = { editing: false, deleting: false };
   let drawControl = null;
 
-  // ===== OMNIBOX STATE =====
-  const destinationSearchBar = document.getElementById(
-    "destination-search-bar"
-  );
-  const destinationSearchBarHome = destinationSearchBar.parentElement;
-  const destinationSearchInput = document.getElementById(
-    "destination-search-input"
-  );
-  const destinationSuggestionsEl = document.getElementById(
-    "destination-suggestions"
-  );
-
-  const departureSearchBar = document.getElementById("departure-search-bar");
-  const departureSearchInput = document.getElementById(
-    "departure-search-input"
-  );
-  const departureSuggestionsEl = document.getElementById(
-    "departure-suggestions"
-  );
-
   let fromLatLng = null;
   let toLatLng = null;
   let fromMarker = null;
@@ -177,26 +156,18 @@ export async function initMap() {
   let drawHelpAlertControl = null;
 
   let obstacleFeatures = [];
-  let reviews = [];
 
-  const reviewForm = detailsPanel.querySelector("#review-form");
-  const reviewsListEl = detailsPanel.querySelector("#reviews-list");
-  const submitReviewBtn = detailsPanel.querySelector("#submit-review-btn");
-
-  // ----- Offcanvas integration -----
-  const offcanvasEl = document.getElementById("placeOffcanvas");
-  const offcanvasTitleEl = document.getElementById("placeOffcanvasLabel");
-  const offcanvasInstance = new bootstrap.Offcanvas(offcanvasEl);
+  const offcanvasInstance = new bootstrap.Offcanvas(elements.offcanvas);
 
   /** Mount search bar + details panel into the Offcanvas and open it. */
   function mountInOffcanvas(titleText) {
-    offcanvasTitleEl.textContent = titleText;
+    elements.offcanvasTitle.textContent = titleText;
     offcanvasInstance.show();
   }
 
-  offcanvasEl.addEventListener("hidden.bs.offcanvas", () => {
-    destinationSearchBarHome.prepend(destinationSearchBar);
-    destinationSearchBar.classList.remove("d-none");
+  elements.offcanvas.addEventListener("hidden.bs.offcanvas", () => {
+    elements.destinationSearchBarHome.prepend(elements.destinationSearchBar);
+    elements.destinationSearchBar.classList.remove("d-none");
   });
 
   // ---------- Bootstrap Modal + Tooltip helpers ----------
@@ -204,16 +175,16 @@ export async function initMap() {
   let obstacleForm, obstacleTitleInput;
 
   function toggleDepartureSuggestions(visible) {
-    departureSuggestionsEl.classList.toggle("d-none", !visible);
-    departureSearchInput.setAttribute(
+    elements.departureSuggestions.classList.toggle("d-none", !visible);
+    elements.departureSearchInput.setAttribute(
       "aria-expanded",
       visible ? "true" : "false"
     );
   }
 
   function toggleDestinationSuggestions(visible) {
-    destinationSuggestionsEl.classList.toggle("d-none", !visible);
-    destinationSearchInput.setAttribute(
+    elements.destinationSuggestions.classList.toggle("d-none", !visible);
+    elements.destinationSearchInput.setAttribute(
       "aria-expanded",
       visible ? "true" : "false"
     );
@@ -440,14 +411,14 @@ export async function initMap() {
       return;
     }
 
-    toLabel.insertAdjacentElement("afterend", destinationSearchBar);
+    toLabel.insertAdjacentElement("afterend", elements.destinationSearchBar);
   }
 
   const renderOneReview = (text) => {
     const li = document.createElement("li");
     li.className = "list-group-item text-wrap";
-    li.innerHTML = text;
-    reviewsListEl.appendChild(li);
+    li.innerHTML = `${text}<div class="mt-1 d-flex flex-wrap gap-1 review-badges"></div>`;
+    elements.reviewsList.appendChild(li);
   };
 
   const renderDetails = async (tags, latlng, { keepDirectionsUi } = {}) => {
@@ -474,11 +445,11 @@ export async function initMap() {
       }
     }
 
-    detailsCtx.tags = tags;
+    globals.detailsCtx.tags = tags;
     const titleText = tags.name || tags.amenity || "Details";
 
-    detailsPanel.classList.remove("d-none");
-    const list = detailsPanel.querySelector("#details-list");
+    elements.detailsPanel.classList.remove("d-none");
+    const list = elements.detailsPanel.querySelector("#details-list");
     list.innerHTML = "";
 
     const nTags = normalizeTagsCase(tags);
@@ -640,36 +611,36 @@ export async function initMap() {
       list.appendChild(item);
     });
 
-    detailsCtx.latlng = latlng;
-    detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
+    globals.detailsCtx.latlng = latlng;
+    globals.detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
 
     // ✅ Ensure the place exists before fetching reviews
     let uuid = null;
     try {
       uuid = await ensurePlaceExists(tags, latlng);
-      detailsCtx.placeId = uuid;
-      console.log("✅ detailsCtx.placeId (UUID):", uuid);
+      globals.detailsCtx.placeId = uuid;
+      console.log("✅ globals.detailsCtx.placeId (UUID):", uuid);
     } catch (err) {
       console.warn("⚠️ ensurePlaceExists failed, skipping reviews:", err);
-      detailsCtx.placeId = null; // still allow photos to load
+      globals.detailsCtx.placeId = null; // still allow photos to load
     }
-    detailsCtx.placeId = uuid;
-    console.log("✅ detailsCtx.placeId (UUID):", uuid);
+    globals.detailsCtx.placeId = uuid;
+    console.log("✅ globals.detailsCtx.placeId (UUID):", uuid);
 
     // ✅ Give Supabase a short delay to confirm record visibility (important for free tier)
     await new Promise((r) => setTimeout(r, 10));
 
     // ✅ Fetch reviews ONCE (with small retry for consistency)
     const key = showLoading("reviews-load");
-    let reviewsData = [];
+    globals.reviews = [];
     try {
       let retries = 3;
       while (retries-- > 0) {
         const data = await reviewStorage("GET", {
-          place_id: detailsCtx.placeId,
+          place_id: globals.detailsCtx.placeId,
         });
         if (data?.length || retries === 0) {
-          reviewsData = data;
+          globals.reviews = data;
           break;
         }
         await new Promise((r) => setTimeout(r, 10));
@@ -679,14 +650,14 @@ export async function initMap() {
     }
 
     // ✅ Render reviews
-    reviewsListEl.innerHTML = "";
-    if (reviewsData.length === 0) {
+    elements.reviewsList.innerHTML = "";
+    if (globals.reviews.length === 0) {
       const emptyMsg = document.createElement("li");
       emptyMsg.className = "list-group-item text-muted";
       emptyMsg.textContent = "No reviews yet.";
-      reviewsListEl.appendChild(emptyMsg);
+      elements.reviewsList.appendChild(emptyMsg);
     } else {
-      reviewsData.forEach((r) => renderOneReview(r.comment));
+      globals.reviews.forEach((r) => renderOneReview(r.comment));
     }
 
     // ✅ Handle layout and offcanvas
@@ -713,6 +684,8 @@ export async function initMap() {
       showMainPhoto(null);
       renderPhotosGrid([]);
     }
+
+    // recomputePlaceAccessibilityKeywords().catch(console.error);
   };
 
   function makeCircleFeature(layer) {
@@ -969,7 +942,7 @@ export async function initMap() {
   });
 
   function renderDepartureSuggestions(items) {
-    departureSuggestionsEl.innerHTML = "";
+    elements.departureSuggestions.innerHTML = "";
     if (!items || !items.length) {
       toggleDepartureSuggestions(false);
       return;
@@ -987,13 +960,13 @@ export async function initMap() {
         selectDepartureSuggestion(items[idx])
       );
       li.appendChild(btn);
-      departureSuggestionsEl.appendChild(li);
+      elements.departureSuggestions.appendChild(li);
     });
     toggleDepartureSuggestions(true);
   }
 
   function renderDestinationSuggestions(items) {
-    destinationSuggestionsEl.innerHTML = "";
+    elements.destinationSuggestions.innerHTML = "";
     if (!items || !items.length) {
       toggleDestinationSuggestions(false);
       return;
@@ -1011,7 +984,7 @@ export async function initMap() {
         selectDestinationSuggestion(items[idx])
       );
       li.appendChild(btn);
-      destinationSuggestionsEl.appendChild(li);
+      elements.destinationSuggestions.appendChild(li);
     });
     toggleDestinationSuggestions(true);
   }
@@ -1081,10 +1054,11 @@ export async function initMap() {
     }).addTo(map);
     attachDraggable(fromMarker, async (ll) => {
       fromLatLng = ll;
-      departureSearchInput.value = await reverseAddressAt(ll);
+      elements.departureSearchInput.value = await reverseAddressAt(ll);
       updateRoute({ fit: false });
     });
-    departureSearchInput.value = text ?? (await reverseAddressAt(latlng));
+    elements.departureSearchInput.value =
+      text ?? (await reverseAddressAt(latlng));
     updateRoute(opts);
   }
 
@@ -1099,12 +1073,13 @@ export async function initMap() {
       }).addTo(map);
       attachDraggable(toMarker, async (ll) => {
         toLatLng = ll;
-        destinationSearchInput.value = await reverseAddressAt(ll);
+        elements.destinationSearchInput.value = await reverseAddressAt(ll);
         updateRoute({ fit: false });
       });
     }
 
-    destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
+    elements.destinationSearchInput.value =
+      text ?? (await reverseAddressAt(latlng));
     updateRoute(opts);
   }
 
@@ -1119,7 +1094,7 @@ export async function initMap() {
     if (selectedPlaceLayer) map.removeLayer(selectedPlaceLayer);
 
     showDetailsLoading(
-      detailsPanel,
+      elements.detailsPanel,
       res.name ?? "Details",
       moveDepartureSearchBarUnderTo,
       mountInOffcanvas
@@ -1181,15 +1156,15 @@ export async function initMap() {
   }
 
   // Also hide on Escape
-  departureSearchInput.addEventListener("keydown", (e) => {
+  elements.departureSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleDepartureSuggestions(false);
   });
-  destinationSearchInput.addEventListener("keydown", (e) => {
+  elements.destinationSearchInput.addEventListener("keydown", (e) => {
     if (e.key === "Escape") toggleDestinationSuggestions(false);
   });
 
   let destinationGeocodeReqSeq = 0;
-  destinationSearchInput.addEventListener(
+  elements.destinationSearchInput.addEventListener(
     "input",
     debounce((e) => {
       console.log("🎯 debounce triggered for query:", e.target.value);
@@ -1201,7 +1176,7 @@ export async function initMap() {
       }
 
       const mySeq = ++destinationGeocodeReqSeq;
-      showListSpinner(destinationSuggestionsEl, "Searching…");
+      showListSpinner(elements.destinationSuggestions, "Searching…");
 
       // console.log("📡 sending Photon request for:", searchQuery);
       geocoder.geocode(searchQuery, (items) => {
@@ -1212,15 +1187,15 @@ export async function initMap() {
         renderDestinationSuggestions(items);
 
         if (!items?.length) {
-          destinationSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-          destinationSuggestionsEl.classList.remove("d-none");
+          elements.destinationSuggestions.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
+          elements.destinationSuggestions.classList.remove("d-none");
         }
       });
     }, 200)
   );
 
   let departureGeocodeReqSeq = 0;
-  departureSearchInput.addEventListener(
+  elements.departureSearchInput.addEventListener(
     "input",
     debounce((e) => {
       const searchQuery = e.target.value.trim();
@@ -1240,67 +1215,72 @@ export async function initMap() {
         );
         renderDepartureSuggestions(items);
         if (!items?.length) {
-          departureSuggestionsEl.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
-          departureSuggestionsEl.classList.remove("d-none");
+          elements.departureSuggestions.innerHTML = `<li class="list-group-item text-muted">No results</li>`;
+          elements.departureSuggestions.classList.remove("d-none");
         }
       });
     }, 200)
   );
 
   const hideSuggestionsIfClickedOutside = (e) => {
-    if (!departureSearchBar.contains(e.target)) {
+    if (!elements.departureSearchBar.contains(e.target)) {
       toggleDepartureSuggestions(false);
     }
 
-    if (!destinationSearchBar.contains(e.target)) {
+    if (!elements.destinationSearchBar.contains(e.target)) {
       toggleDestinationSuggestions(false);
     }
   };
   document.addEventListener("click", hideSuggestionsIfClickedOutside);
 
-  detailsPanel
+  elements.detailsPanel
     .querySelector("#btn-start-here")
     .addEventListener("click", async () => {
       directionsUi.classList.remove("d-none");
       mountInOffcanvas("Directions");
-      await setFrom(detailsCtx.latlng);
-      destinationSearchInput.focus();
+      await setFrom(globals.detailsCtx.latlng);
+      elements.destinationSearchInput.focus();
     });
 
-  detailsPanel
+  elements.detailsPanel
     .querySelector("#btn-go-here")
     .addEventListener("click", async () => {
       directionsUi.classList.remove("d-none");
       mountInOffcanvas("Directions");
-      await setTo(detailsCtx.latlng);
-      departureSearchInput.focus();
+      await setTo(globals.detailsCtx.latlng);
+      elements.departureSearchInput.focus();
     });
 
-  reviewForm.addEventListener("submit", async (e) => {
+  elements.reviewForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const textarea = reviewForm.querySelector("#review-text");
+    const textarea = elements.reviewForm.querySelector("#review-text");
     const text = textarea.value.trim();
     if (!text) return;
 
     try {
-      console.log("🧭 Review submit ctx:", detailsCtx);
+      console.log("🧭 Review submit ctx:", globals.detailsCtx);
       const placeId =
-        detailsCtx.placeId ??
-        (await ensurePlaceExists(detailsCtx.tags, detailsCtx.latlng));
+        globals.detailsCtx.placeId ??
+        (await ensurePlaceExists(
+          globals.detailsCtx.tags,
+          globals.detailsCtx.latlng
+        ));
       const newReview = { text, place_id: placeId };
 
       await withButtonLoading(
-        submitReviewBtn,
+        elements.submitReviewBtn,
         reviewStorage("POST", newReview),
         "Saving…"
       );
 
       // ✅ Reload and render updated reviews list
-      const updated = await reviewStorage("GET", { place_id: placeId });
-      reviewsListEl.innerHTML = "";
-      updated.forEach((r) => renderOneReview(r.comment));
+      globals.reviews = await reviewStorage("GET", { place_id: placeId });
+      elements.reviewsList.innerHTML = "";
+      globals.reviews.forEach((r) => renderOneReview(r.comment));
 
       textarea.value = "";
+
+      // recomputePlaceAccessibilityKeywords().catch(console.error);
     } catch (error) {
       console.error("❌ Failed to save review:", error);
       toastError("Could not save your review. Please try again.");

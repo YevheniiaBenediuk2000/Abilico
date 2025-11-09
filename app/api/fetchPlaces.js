@@ -1,5 +1,5 @@
 import pRetry from "p-retry";
-import { pRetryConfig, SHOW_PLACES_ZOOM } from "../constants.mjs";
+import { pRetryConfig, SHOW_PLACES_ZOOM } from "../constants/constants.mjs";
 import osmtogeojson from "osmtogeojson";
 
 const OVERPASS_ENDPOINTS = [
