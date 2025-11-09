@@ -107,30 +107,30 @@ export async function initMap() {
     const goBtn = document.getElementById("qp-go");
 
     startBtn.addEventListener("click", async (ev) => {
-        L.DomEvent.stop(ev);
-        console.log("🟢 CLICK: Start here clicked at latlng:", latlng);
-        try {
-            directionsUi.classList.remove("d-none");
-            moveDepartureSearchBarUnderTo();
-            mountInOffcanvas("Directions");
+      L.DomEvent.stop(ev);
+      console.log("🟢 CLICK: Start here clicked at latlng:", latlng);
+      try {
+        directionsUi.classList.remove("d-none");
+        moveDepartureSearchBarUnderTo();
+        mountInOffcanvas("Directions");
 
-            await setFrom(latlng, null, { fit: false });
-            // chInput.focus();
-            elements.departureSearchInput.focus();
-            // departureSearchInput.focus();
-        } finally {
-            map.closePopup(clickPopup);
-            console.log("🟢 Start here handler finished");
-        }
+        await setFrom(latlng, null, { fit: false });
+        // chInput.focus();
+        elements.departureSearchInput.focus();
+        // departureSearchInput.focus();
+      } finally {
+        map.closePopup(clickPopup);
+        console.log("🟢 Start here handler finished");
+      }
     });
 
     goBtn.addEventListener("click", async (ev) => {
-        console.log("🟢 CLICK: Go here clicked at latlng:", latlng);
-        L.DomEvent.stop(ev);
-        try {
-            directionsUi.classList.remove("d-none");
-            moveDepartureSearchBarUnderTo();
-            mountInOffcanvas("Directions");
+      console.log("🟢 CLICK: Go here clicked at latlng:", latlng);
+      L.DomEvent.stop(ev);
+      try {
+        directionsUi.classList.remove("d-none");
+        moveDepartureSearchBarUnderTo();
+        mountInOffcanvas("Directions");
 
         await setTo(latlng, null, { fit: false });
         elements.departureSearchInput.focus();
@@ -329,130 +329,119 @@ export async function initMap() {
     }
   }
 
-    // ✅ Create a Photon-based geocoder instance from Leaflet-Control-Geocoder.
-// This object normally has `geocode()` (search by name) and `reverse()` (get name from coordinates),
-// but the default implementation uses XHR, which often fails in modern frameworks (Next.js, Vite, Turbopack).
-    const geocoder = L.Control.Geocoder.photon({
-        serviceUrl: "https://photon.komoot.io/api/",
-        reverseUrl: "https://photon.komoot.io/reverse/",
-    });
+  // ✅ Create a Photon-based geocoder instance from Leaflet-Control-Geocoder.
+  // This object normally has `geocode()` (search by name) and `reverse()` (get name from coordinates),
+  // but the default implementation uses XHR, which often fails in modern frameworks (Next.js, Vite, Turbopack).
+  const geocoder = L.Control.Geocoder.photon({
+    serviceUrl: "https://photon.komoot.io/api/",
+    reverseUrl: "https://photon.komoot.io/reverse/",
+  });
 
-  // 🚑 Patch Photon geocoder to always fire callback (Next.js / Turbopack safe)
+  // ------------------------------------------------------------
+  // Utility helper for making safe JSON requests
+  // ------------------------------------------------------------
+
+  // Instead of repeating fetch + error handling in both functions,
+  // we define a helper that guarantees consistent error messages.
+  const safeFetch = async (url) => {
+    const res = await fetch(url);
+
+    // If Photon responds with non-2xx (e.g., 403 or 500), throw a descriptive error.
+    if (!res.ok) throw new Error(`Photon HTTP ${res.status}`);
+
+    // Parse JSON — Photon always returns valid GeoJSON FeatureCollection.
+    return res.json();
+  };
+
+  // ------------------------------------------------------------
+  // Override the default forward geocoding behavior (Search bar)
+  // ------------------------------------------------------------
+
+  // This replaces Leaflet’s internal geocode() implementation
+  // with our own version that uses fetch() and always calls the callback (`cb`)
+  // — even if the request fails or returns no results.
   geocoder.geocode = async function (query, cb) {
     try {
-      const res = await fetch(
-        `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}`
-      );
-      if (!res.ok) throw new Error(`Photon error: HTTP ${res.status}`);
-      const json = await res.json();
+      // ✅ Ignore empty or whitespace-only queries.
+      if (!query?.trim()) return cb([]);
 
-// ------------------------------------------------------------
-// Utility helper for making safe JSON requests
-// ------------------------------------------------------------
+      // Compose the Photon API endpoint with a properly encoded search string.
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+        query
+      )}`;
 
-// Instead of repeating fetch + error handling in both functions,
-// we define a helper that guarantees consistent error messages.
-    const safeFetch = async (url) => {
-        const res = await fetch(url);
+      // Fetch the GeoJSON response safely.
+      const json = await safeFetch(url);
 
-        // If Photon responds with non-2xx (e.g., 403 or 500), throw a descriptive error.
-        if (!res.ok) throw new Error(`Photon HTTP ${res.status}`);
+      // Map each GeoJSON feature into Leaflet-friendly result objects.
+      const results = (json.features || []).map((f) => ({
+        name:
+          f.properties.name || // normal place name
+          f.properties.osm_value || // fallback: OSM tag (like "restaurant")
+          f.properties.street || // or street name
+          "Unnamed", // fallback if no name at all
+        center: [
+          // convert [lon, lat] → [lat, lon] for Leaflet
+          f.geometry.coordinates[1],
+          f.geometry.coordinates[0],
+        ],
+        properties: f.properties, // keep all Photon metadata for later (e.g. OSM ID)
+      }));
 
-        // Parse JSON — Photon always returns valid GeoJSON FeatureCollection.
-        return res.json();
-    };
+      // Log to help debug and confirm search → callback path.
+      console.log("🌍 Photon geocode callback fired:", query, results);
 
+      // ✅ Always call the callback with results — this updates the search suggestions.
+      cb(results);
+    } catch (err) {
+      // In case of fetch/network/parse errors, print clearly in console.
+      console.error("❌ Photon geocode failed:", err);
 
-// ------------------------------------------------------------
-// Override the default forward geocoding behavior (Search bar)
-// ------------------------------------------------------------
+      // ✅ Important: still call `cb([])` so the UI spinner stops instead of hanging forever.
+      cb([]);
+    }
+  };
 
-// This replaces Leaflet’s internal geocode() implementation
-// with our own version that uses fetch() and always calls the callback (`cb`)
-// — even if the request fails or returns no results.
-    geocoder.geocode = async function (query, cb) {
-        try {
-            // ✅ Ignore empty or whitespace-only queries.
-            if (!query?.trim()) return cb([]);
+  // ------------------------------------------------------------
+  // 📍 Override reverse geocoding behavior (Route start/end naming)
+  // ------------------------------------------------------------
 
-            // Compose the Photon API endpoint with a properly encoded search string.
-            const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}`;
+  // Similar to above, but goes the other way around: lat/lng → nearest place name.
+  geocoder.reverse = async function (latlng, scale, cb) {
+    try {
+      // Build the reverse geocoding URL with coordinates.
+      const url = `https://photon.komoot.io/reverse?lat=${latlng.lat}&lon=${latlng.lng}`;
 
-            // Fetch the GeoJSON response safely.
-            const json = await safeFetch(url);
+      // Fetch and parse JSON safely.
+      const json = await safeFetch(url);
 
-            // Map each GeoJSON feature into Leaflet-friendly result objects.
-            const results = (json.features || []).map((f) => ({
-                name:
-                    f.properties.name ||               // normal place name
-                    f.properties.osm_value ||          // fallback: OSM tag (like "restaurant")
-                    f.properties.street ||             // or street name
-                    "Unnamed",                         // fallback if no name at all
-                center: [                            // convert [lon, lat] → [lat, lon] for Leaflet
-                    f.geometry.coordinates[1],
-                    f.geometry.coordinates[0],
-                ],
-                properties: f.properties,            // keep all Photon metadata for later (e.g. OSM ID)
-            }));
+      // Convert GeoJSON features to Leaflet-friendly results.
+      const results = (json.features || []).map((f) => ({
+        name:
+          f.properties.name || // best available name
+          f.properties.osm_value || // fallback (e.g., "building" or "bus_stop")
+          f.properties.street || // or nearby street
+          "Unnamed", // last-resort fallback
+        center: [f.geometry.coordinates[1], f.geometry.coordinates[0]],
+        properties: f.properties,
+      }));
 
-            // Log to help debug and confirm search → callback path.
-            console.log("🌍 Photon geocode callback fired:", query, results);
+      // Log to confirm reverse geocode happened and data returned.
+      console.log("📍 Photon reverse callback fired:", latlng, results);
 
-            // ✅ Always call the callback with results — this updates the search suggestions.
-            cb(results);
-        } catch (err) {
-            // In case of fetch/network/parse errors, print clearly in console.
-            console.error("❌ Photon geocode failed:", err);
+      // ✅ Pass results to the callback so map labels and inputs update.
+      cb(results);
+    } catch (err) {
+      // Handle network, JSON, or HTTP failures.
+      console.error("❌ Photon reverse failed:", err);
 
-            // ✅ Important: still call `cb([])` so the UI spinner stops instead of hanging forever.
-            cb([]);
-        }
-    };
+      // ✅ Always call cb([]) — never leave routing promises hanging.
+      cb([]);
+    }
+  };
 
-
-// ------------------------------------------------------------
-// 📍 Override reverse geocoding behavior (Route start/end naming)
-// ------------------------------------------------------------
-
-// Similar to above, but goes the other way around: lat/lng → nearest place name.
-    geocoder.reverse = async function (latlng, scale, cb) {
-        try {
-            // Build the reverse geocoding URL with coordinates.
-            const url = `https://photon.komoot.io/reverse?lat=${latlng.lat}&lon=${latlng.lng}`;
-
-            // Fetch and parse JSON safely.
-            const json = await safeFetch(url);
-
-            // Convert GeoJSON features to Leaflet-friendly results.
-            const results = (json.features || []).map((f) => ({
-                name:
-                    f.properties.name ||               // best available name
-                    f.properties.osm_value ||          // fallback (e.g., "building" or "bus_stop")
-                    f.properties.street ||             // or nearby street
-                    "Unnamed",                         // last-resort fallback
-                center: [
-                    f.geometry.coordinates[1],
-                    f.geometry.coordinates[0],
-                ],
-                properties: f.properties,
-            }));
-
-            // Log to confirm reverse geocode happened and data returned.
-            console.log("📍 Photon reverse callback fired:", latlng, results);
-
-            // ✅ Pass results to the callback so map labels and inputs update.
-            cb(results);
-        } catch (err) {
-            // Handle network, JSON, or HTTP failures.
-            console.error("❌ Photon reverse failed:", err);
-
-            // ✅ Always call cb([]) — never leave routing promises hanging.
-            cb([]);
-        }
-    };
-
-let placesReqSeq = 0;
-async function refreshPlaces() {
+  let placesReqSeq = 0;
+  async function refreshPlaces() {
     const mySeq = ++placesReqSeq; // capture this call’s id
 
     const zoom = map.getZoom();
@@ -813,16 +802,16 @@ async function refreshPlaces() {
     // console.groupEnd();
 
     obstacleFeatures.forEach((row) => {
-        const feature = {
-            type: "Feature",
-            properties: {
-                obstacleId: row.id,
-                shape: row.type,
-                title: row.description,
-                radius: row.radius,
-            },
-            geometry: row.geometry,
-        };
+      const feature = {
+        type: "Feature",
+        properties: {
+          obstacleId: row.id,
+          shape: row.type,
+          title: row.description,
+          radius: row.radius,
+        },
+        geometry: row.geometry,
+      };
 
       let layer;
       if (feature.properties.shape === "circle") {
@@ -894,19 +883,21 @@ async function refreshPlaces() {
         tooltipTextFromProps(featureToStore.properties)
       );
 
-        const key = showLoading("obstacles-put");
-        try {
-            const { data, error } = await supabase
-                .from("obstacles")
-                .insert([
-                    {
-                        type: featureToStore.properties.shape,
-                        description: featureToStore.properties.title,
-                        geometry: featureToStore.geometry,
-                        radius: featureToStore.properties.radius ?? (e.layer.getRadius?.() || null),
-                    },
-                ])
-                .select();
+      const key = showLoading("obstacles-put");
+      try {
+        const { data, error } = await supabase
+          .from("obstacles")
+          .insert([
+            {
+              type: featureToStore.properties.shape,
+              description: featureToStore.properties.title,
+              geometry: featureToStore.geometry,
+              radius:
+                featureToStore.properties.radius ??
+                (e.layer.getRadius?.() || null),
+            },
+          ])
+          .select();
 
         if (error) throw error;
 
@@ -944,21 +935,21 @@ async function refreshPlaces() {
         );
         if (!existing) return;
 
-            existing.geometry = updated.geometry;
-            try {
-                await obstacleStorage("PUT", {
-                    id,
-                    type: existing.properties.shape,
-                    description: existing.properties.title,
-                    geometry: updated.geometry,
-                    radius: updated.properties?.radius || layer.getRadius?.() || null,
-                });
-                console.log("✅ Updated obstacle:", id);
-            } catch (err) {
-                console.error("❌ Failed to update:", err);
-                toastError("Could not update obstacle.");
-            }
-        });
+        existing.geometry = updated.geometry;
+        try {
+          await obstacleStorage("PUT", {
+            id,
+            type: existing.properties.shape,
+            description: existing.properties.title,
+            geometry: updated.geometry,
+            radius: updated.properties?.radius || layer.getRadius?.() || null,
+          });
+          console.log("✅ Updated obstacle:", id);
+        } catch (err) {
+          console.error("❌ Failed to update:", err);
+          toastError("Could not update obstacle.");
+        }
+      });
     });
 
     // DELETE
@@ -1102,132 +1093,147 @@ async function refreshPlaces() {
       map.removeLayer(routeLayer);
       routeLayer = null;
     }
-}
-    async function updateRoute({fit = true} = {}) {
-        console.log("🧭 updateRoute() called:", { fromLatLng, toLatLng });
-        clearRoute();
+  }
+  async function updateRoute({ fit = true } = {}) {
+    console.log("🧭 updateRoute() called:", { fromLatLng, toLatLng });
+    clearRoute();
 
-        // 🧩 Defensive guard
-        if (
-            !fromLatLng ||
-            !toLatLng ||
-            !fromLatLng.lat ||
-            !fromLatLng.lng ||
-            !toLatLng.lat ||
-            !toLatLng.lng
-        ) {
-            console.warn("⚠️ updateRoute aborted: invalid from/to coords", { fromLatLng, toLatLng });
-            return;
-        }
-
-        const key = showLoading("route");
-
-        try {
-            const geojson = await fetchRoute(
-                [
-                    [fromLatLng.lng, fromLatLng.lat],
-                    [toLatLng.lng, toLatLng.lat],
-                ],
-                obstacleFeatures
-            );
-            console.log("📦 fetchRoute() returned:", geojson);
-
-            if (!geojson) {
-                console.warn("⚠️ No route returned from API");
-                return;
-            }
-
-            routeLayer = L.geoJSON(geojson, {
-                style: {color: "var(--bs-indigo)", weight: 5, opacity: 0.9},
-                interactive: false,
-            }).addTo(map);
-
-            const bounds = routeLayer.getBounds();
-            if (fit && bounds.isValid()) {
-                map.fitBounds(bounds, {padding: [120, 120]});
-            }
-        } finally {
-            hideLoading(key);
-        }
+    // 🧩 Defensive guard
+    if (
+      !fromLatLng ||
+      !toLatLng ||
+      !fromLatLng.lat ||
+      !fromLatLng.lng ||
+      !toLatLng.lat ||
+      !toLatLng.lng
+    ) {
+      console.warn("⚠️ updateRoute aborted: invalid from/to coords", {
+        fromLatLng,
+        toLatLng,
+      });
+      return;
     }
 
-    async function setFrom(latlng, text, opts = {}) {
-        console.log("➡️ setFrom() called with:", { latlng, text, opts });
+    const key = showLoading("route");
 
-        fromLatLng = latlng;
-        if (fromMarker) map.removeLayer(fromMarker);
-        fromMarker = L.marker(latlng, {
-            draggable: true,
-            icon: waypointDivIcon("A", WP_COLORS.start),
-        }).addTo(map);
+    try {
+      const geojson = await fetchRoute(
+        [
+          [fromLatLng.lng, fromLatLng.lat],
+          [toLatLng.lng, toLatLng.lat],
+        ],
+        obstacleFeatures
+      );
+      console.log("📦 fetchRoute() returned:", geojson);
 
-        attachDraggable(fromMarker, async (ll) => {
-            console.log("🌀 fromMarker dragged to:", ll);
-            fromLatLng = ll;
-            elements.departureSearchInput.value = await reverseAddressAt(ll);
-            updateRoute({ fit: false });
-        });
+      if (!geojson) {
+        console.warn("⚠️ No route returned from API");
+        return;
+      }
 
-        const address = await reverseAddressAt(latlng);
-        console.log("📍 reverseAddressAt() returned:", address);
-        elements.departureSearchInput.value = text ?? address;
+      routeLayer = L.geoJSON(geojson, {
+        style: { color: "var(--bs-indigo)", weight: 5, opacity: 0.9 },
+        interactive: false,
+      }).addTo(map);
 
-        console.log("✅ departureSearchInput.value now:", elements.departureSearchInput.value);
+      const bounds = routeLayer.getBounds();
+      if (fit && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [120, 120] });
+      }
+    } finally {
+      hideLoading(key);
+    }
+  }
 
-        // 🧭 Only trigger routing when both endpoints exist
+  async function setFrom(latlng, text, opts = {}) {
+    console.log("➡️ setFrom() called with:", { latlng, text, opts });
+
+    fromLatLng = latlng;
+    if (fromMarker) map.removeLayer(fromMarker);
+    fromMarker = L.marker(latlng, {
+      draggable: true,
+      icon: waypointDivIcon("A", WP_COLORS.start),
+    }).addTo(map);
+
+    attachDraggable(fromMarker, async (ll) => {
+      console.log("🌀 fromMarker dragged to:", ll);
+      fromLatLng = ll;
+      elements.departureSearchInput.value = await reverseAddressAt(ll);
+      updateRoute({ fit: false });
+    });
+
+    const address = await reverseAddressAt(latlng);
+    console.log("📍 reverseAddressAt() returned:", address);
+    elements.departureSearchInput.value = text ?? address;
+
+    console.log(
+      "✅ departureSearchInput.value now:",
+      elements.departureSearchInput.value
+    );
+
+    // 🧭 Only trigger routing when both endpoints exist
+    if (toLatLng && fromLatLng) {
+      // 🧭 Trigger routing only when both are valid
+      if (
+        toLatLng?.lat &&
+        toLatLng?.lng &&
+        fromLatLng?.lat &&
+        fromLatLng?.lng
+      ) {
+        await updateRoute(opts);
+      } else {
+        console.log("ℹ️ Waiting for origin to be set before routing.");
+      }
+    } else {
+      console.log("ℹ️ Waiting for destination to be set before routing.");
+    }
+  }
+
+  async function setTo(latlng, text, opts = {}) {
+    console.log("➡️ setTo() called with:", { latlng, text, opts });
+    console.log(
+      "ℹ️ directionsUi visible?",
+      !directionsUi.classList.contains("d-none")
+    );
+    toLatLng = latlng;
+    const directionsActive = !directionsUi.classList.contains("d-none");
+    if (directionsActive) {
+      if (toMarker) map.removeLayer(toMarker);
+      toMarker = L.marker(latlng, {
+        draggable: true,
+        icon: waypointDivIcon("B", WP_COLORS.end),
+      }).addTo(map);
+      attachDraggable(toMarker, async (ll) => {
+        toLatLng = ll;
+        elements.destinationSearchInput.value = await reverseAddressAt(ll);
         if (toLatLng && fromLatLng) {
-            // 🧭 Trigger routing only when both are valid
-            if (toLatLng?.lat && toLatLng?.lng && fromLatLng?.lat && fromLatLng?.lng) {
-                await updateRoute(opts);
-            } else {
-                console.log("ℹ️ Waiting for origin to be set before routing.");
-            }
+          await updateRoute(opts);
         } else {
-            console.log("ℹ️ Waiting for destination to be set before routing.");
+          console.log("ℹ️ Waiting for origin to be set before routing.");
         }
+      });
     }
 
-    async function setTo(latlng, text, opts = {}) {
-        console.log("➡️ setTo() called with:", { latlng, text, opts });
-        console.log("ℹ️ directionsUi visible?", !directionsUi.classList.contains("d-none"));
-        toLatLng = latlng;
-        const directionsActive = !directionsUi.classList.contains("d-none");
-        if (directionsActive) {
-            if (toMarker) map.removeLayer(toMarker);
-            toMarker = L.marker(latlng, {
-                draggable: true,
-                icon: waypointDivIcon("B", WP_COLORS.end),
-            }).addTo(map);
-            attachDraggable(toMarker, async (ll) => {
-                toLatLng = ll;
-                elements.destinationSearchInput.value = await reverseAddressAt(ll);
-                if (toLatLng && fromLatLng) {
-                    await updateRoute(opts);
-                } else {
-                    console.log("ℹ️ Waiting for origin to be set before routing.");
-                }
-            });
-        }
+    elements.destinationSearchInput.value =
+      text ?? (await reverseAddressAt(latlng));
+    updateRoute(opts);
+  }
 
-        elements.destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
-        updateRoute(opts);
-    }
+  function reverseAddressAt(latlng) {
+    console.log("🧭 reverseAddressAt called for:", latlng);
 
-    function reverseAddressAt(latlng) {
-        console.log("🧭 reverseAddressAt called for:", latlng);
+    const key = showLoading("reverse");
 
-        const key = showLoading("reverse");
+    return new Promise((resolve) => {
+      geocoder.reverse(latlng, map.options.crs.scale(18), (items) => {
+        console.log("📍 reverseAddressAt → got items:", items);
+        hideLoading(key);
 
-        return new Promise((resolve) => {
-            geocoder.reverse(latlng, map.options.crs.scale(18), (items) => {
-                console.log("📍 reverseAddressAt → got items:", items);
-                hideLoading(key);
-
-                const best = items?.[0]?.name;
-                resolve(best || `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
-            });
-        });
-    }
+        const best = items?.[0]?.name;
+        resolve(best || `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
+      });
+    });
+  }
 
   async function selectDepartureSuggestion(res) {
     toggleDepartureSuggestions(false);
@@ -1320,34 +1326,39 @@ async function refreshPlaces() {
         toggleDestinationSuggestions(false);
         return;
       }
+    })
+  );
 
-    elements.detailsPanel
-        .querySelector("#btn-start-here")
-        .addEventListener("click", async () => {
-            // ✅ Ensure directions UI is visible
-            directionsUi.classList.remove("d-none");
-            mountInOffcanvas("Directions");
+  elements.detailsPanel
+    .querySelector("#btn-start-here")
+    .addEventListener("click", async () => {
+      // ✅ Ensure directions UI is visible
+      directionsUi.classList.remove("d-none");
+      mountInOffcanvas("Directions");
 
-            // 🧭 Clear destination (To)
-            if (toMarker) {
-                map.removeLayer(toMarker);
-                toMarker = null;
-                toLatLng = null;
-            }
-            elements.destinationSearchInput.value = "";
+      // 🧭 Clear destination (To)
+      if (toMarker) {
+        map.removeLayer(toMarker);
+        toMarker = null;
+        toLatLng = null;
+      }
+      elements.destinationSearchInput.value = "";
 
-            // 🧹 Also clear any highlighted place polygon or marker
-            if (selectedPlaceLayer) {
-                map.removeLayer(selectedPlaceLayer);
-                selectedPlaceLayer = null;
-            }
+      // 🧹 Also clear any highlighted place polygon or marker
+      if (selectedPlaceLayer) {
+        map.removeLayer(selectedPlaceLayer);
+        selectedPlaceLayer = null;
+      }
 
-            // 🧩 Set this place as the new origin (From)
-            await setFrom(detailsCtx.latlng, detailsCtx.tags?.name || "Selected place");
+      // 🧩 Set this place as the new origin (From)
+      await setFrom(
+        detailsCtx.latlng,
+        globals.detailsCtx.tags?.name || "Selected place"
+      );
 
-            // ✅ Focus on "From" input for user clarity
-            elements.departureSearchInput.focus();
-        });
+      // ✅ Focus on "From" input for user clarity
+      elements.departureSearchInput.focus();
+    });
 
   elements.detailsPanel
     .querySelector("#btn-go-here")
