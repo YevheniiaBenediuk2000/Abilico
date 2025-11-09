@@ -9,6 +9,7 @@ const mainPhotoWrapper = document.getElementById("main-photo-wrapper");
 const mainPhotoImg = document.getElementById("main-photo");
 const photosGrid = document.getElementById("photos-grid");
 const photosEmpty = document.getElementById("photos-empty");
+const mainPhotoCaption = document.getElementById("main-photo-caption");
 
 const COMMONS_API = "https://commons.wikimedia.org/w/api.php?origin=*";
 
@@ -278,11 +279,18 @@ export function showMainPhoto(photo) {
     mainPhotoWrapper.classList.add("d-none");
     mainPhotoImg.removeAttribute("src");
     mainPhotoImg.removeAttribute("alt");
+    mainPhotoCaption.textContent = "";
+
     return;
   }
 
   mainPhotoImg.src = photo.src || photo.thumb;
   mainPhotoImg.alt = photo.title || "Place photo";
+  mainPhotoCaption.innerHTML = [
+    photo.credit ? `<span>${photo.credit}</span>` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   // Clicking main photo opens Photos tab and scrolls into view
   mainPhotoImg.onclick = () => {

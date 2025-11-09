@@ -58,6 +58,14 @@ console.log("🧭 mapMain.js imported fetchPhotos.mjs successfully");
 import { makePoiIcon } from "./icons/makePoiIcon.mjs";
 import { supabase } from "./api/supabaseClient.js";
 import { ensurePlaceExists, reviewStorage } from "./api/reviewStorage.js";
+import {
+  cleanUrl,
+  hostLabel,
+  linkLabel,
+  normalizeTagsCase,
+  splitMulti,
+  toMapillaryViewerUrl,
+} from "./modules/beautifyDetailLinks.js";
 
 const detailsCtx = { latlng: null, placeId: null };
 
@@ -473,43 +481,167 @@ export async function initMap() {
     const list = detailsPanel.querySelector("#details-list");
     list.innerHTML = "";
 
+    const nTags = normalizeTagsCase(tags);
+
+    // WEBSITE (single merged block)
+    const websiteLinks = splitMulti(nTags.website || "")
+      .map(cleanUrl)
+      .filter(Boolean);
+    if (websiteLinks.length) {
+      const item = document.createElement("div");
+      item.className =
+        "list-group-item d-flex justify-content-between align-items-start";
+      const links = websiteLinks
+        .map(
+          (u) =>
+            `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${linkLabel(
+              u
+            )}</a>`
+        )
+        .join(" · ");
+      item.innerHTML = `<div class="me-2"><h6 class="mb-1 fw-semibold">Website</h6><p class="small mb-1">${links}</p></div>`;
+      list.appendChild(item);
+    }
+
     // --- Render basic tags (address, amenity, etc.) ---
-    Object.entries(tags).forEach(([key, value]) => {
+    Object.entries(nTags).forEach(([key, value]) => {
+      const isWebsiteVariant =
+        /^(website|url)(?::\d+)?$/i.test(key) || /^contact:website$/i.test(key);
+      if (isWebsiteVariant) return;
+
       const containsAltName = /alt\s*name/i.test(key);
       const containsLocalizedVariants =
-        /^(name|alt_name|short_name|display_name):/.test(key.toLowerCase());
+        /^(name|alt_name|short_name|display_name):/i.test(key);
       const isCountryKey = /^country$/i.test(key);
+      const isWikiDataKey = /^wikidata(?::[a-z-]+)?$/i.test(key);
 
       const isExcluded =
         EXCLUDED_PROPS.has(key) ||
         containsAltName ||
         containsLocalizedVariants ||
-        isCountryKey;
+        isCountryKey ||
+        isWikiDataKey;
 
-      if (!isExcluded) {
-        const item = document.createElement("div");
-        item.className =
-          "list-group-item d-flex justify-content-between align-items-start";
-        let displayKey =
-          key === "display_name"
-            ? "Address"
-            : key
-                .replace(/^Addr_?/i, "")
-                .replace(/[_:]/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase());
-        const displayValue = String(value)
+      if (isExcluded) return;
+
+      const lk = key.toLowerCase();
+      const item = document.createElement("div");
+      item.className =
+        "list-group-item d-flex justify-content-between align-items-start";
+
+      // Special cases: linkify
+      if (lk === "website" || lk === "url") {
+        const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+        if (!urls.length) return;
+
+        const links = urls
+          .map(
+            (u) =>
+              `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+                u
+              )}</a>`
+          )
+          .join(" · ");
+
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Website</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "image") {
+        const urls = splitMulti(value).map(cleanUrl).filter(Boolean);
+        if (!urls.length) return;
+
+        const links = urls
+          .map((u) => {
+            // If someone put a Mapillary URL in image=, route it to the viewer
+            if (/mapillary\.com/i.test(u)) {
+              const viewer = toMapillaryViewerUrl(u);
+              return `<a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Mapillary</a>`;
+            }
+            // Google Photos shares are pages, not direct images; still useful
+            if (/photos\.app\.goo\.gl|photos\.google\.com/i.test(u)) {
+              return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">Google Photos</a>`;
+            }
+            // Fallback: show host
+            return `<a href="${u}" target="_blank" rel="noopener nofollow ugc">${hostLabel(
+              u
+            )}</a>`;
+          })
+          .join(" · ");
+
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Photo Link(s)</h6>
+        <p class="small mb-1">${links}</p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "mapillary") {
+        const viewer = toMapillaryViewerUrl(value);
+        if (!viewer) return;
+        item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Street Imagery</h6>
+        <p class="small mb-1">
+          <a href="${viewer}" target="_blank" rel="noopener nofollow ugc">Open in Mapillary</a>
+        </p>
+      </div>`;
+        list.appendChild(item);
+        return;
+      }
+
+      if (lk === "wikipedia" || /^wikipedia:[a-z-]+$/i.test(lk)) {
+        const spec =
+          lk === "wikipedia" ? value : `${lk.split(":")[1]}:${value}`;
+        const m = String(spec).match(/^([a-z-]+)\s*:\s*(.+)$/i);
+        if (m) {
+          const lang = m[1];
+          const title = m[2].replace(/\s/g, "_");
+          const href = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(
+            title
+          )}`;
+          item.innerHTML = `
+      <div class="me-2">
+        <h6 class="mb-1 fw-semibold">Wikipedia</h6>
+        <p class="small mb-1"><a href="${href}" target="_blank" rel="noopener">Wikipedia (${lang})</a></p>
+      </div>`;
+          list.appendChild(item);
+          return;
+        }
+      }
+
+      // Default rendering
+      let displayKey = null;
+      if (key === "display_name") {
+        displayKey = "Address";
+      } else {
+        displayKey = key
+          .replace(/^Addr_?/i, "")
           .replace(/[_:]/g, " ")
           .replace(/\b\w/g, (c) => c.toUpperCase());
-        item.innerHTML = `
-        <div class="me-2">
-          <h6 class="mb-1 fw-semibold">${displayKey}</h6>
-          <p class="small mb-1">${displayValue}</p>
-        </div>`;
-        list.appendChild(item);
       }
+
+      const displayValue = String(value)
+        .replace(/[_:]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      item.innerHTML = `
+    <div class="me-2">
+      <h6 class="mb-1 fw-semibold">${displayKey}</h6>
+      <p class="small mb-1">${displayValue}</p>
+    </div>`;
+      list.appendChild(item);
     });
 
     detailsCtx.latlng = latlng;
+    detailsCtx.placeId = tags.id ?? tags.osm_id ?? tags.place_id;
 
     // ✅ Ensure the place exists before fetching reviews
     let uuid = null;
@@ -525,7 +657,7 @@ export async function initMap() {
     console.log("✅ detailsCtx.placeId (UUID):", uuid);
 
     // ✅ Give Supabase a short delay to confirm record visibility (important for free tier)
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 10));
 
     // ✅ Fetch reviews ONCE (with small retry for consistency)
     const key = showLoading("reviews-load");
@@ -540,7 +672,7 @@ export async function initMap() {
           reviewsData = data;
           break;
         }
-        await new Promise((r) => setTimeout(r, 600));
+        await new Promise((r) => setTimeout(r, 10));
       }
     } finally {
       hideLoading(key);

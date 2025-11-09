@@ -182,6 +182,10 @@
   cursor: pointer;
 }
 
+#main-photo-caption {
+  font-size: 0.7rem;
+}
+
 #photos-grid .figure-caption {
   font-size: 0.6rem;
 }
