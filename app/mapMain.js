@@ -685,7 +685,7 @@ export async function initMap() {
       renderPhotosGrid([]);
     }
 
-    // recomputePlaceAccessibilityKeywords().catch(console.error);
+    recomputePlaceAccessibilityKeywords().catch(console.error);
   };
 
   function makeCircleFeature(layer) {
@@ -1280,7 +1280,7 @@ export async function initMap() {
 
       textarea.value = "";
 
-      // recomputePlaceAccessibilityKeywords().catch(console.error);
+      recomputePlaceAccessibilityKeywords().catch(console.error);
     } catch (error) {
       console.error("❌ Failed to save review:", error);
       toastError("Could not save your review. Please try again.");

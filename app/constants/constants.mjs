@@ -50,7 +50,7 @@ export const BADGE_COLOR_BY_TIER = {
   no: "var(--bs-danger)", // red
 };
 
-export const ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD = 0.9;
+export const ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD = 0.985;
 
 export const ACCESSIBILITY_LABELS_IN_REVIEWS = [
   "wheelchair access",

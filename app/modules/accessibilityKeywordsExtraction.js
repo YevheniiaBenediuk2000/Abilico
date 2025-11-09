@@ -1,40 +1,25 @@
-import { ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD } from "../constants/constants.mjs";
+import {
+  ACCESSIBILITY_KEYWORDS_CLASSIFICATION_THRESHOLD,
+  ACCESSIBILITY_LABELS_IN_REVIEWS,
+} from "../constants/constants.mjs";
 import elements from "../constants/domElements.js";
 import globals from "../constants/globalVariables.js";
 import { hideLoading, showLoading } from "../utils/loading.mjs";
 
-const classifierWorker = new Worker(
-  new URL("../workers/accessibilityKeywordsClassifier.js", import.meta.url),
-  { type: "module" }
-);
-
-let _reqId = 0;
-const _pending = new Map();
-classifierWorker.onmessage = (e) => {
-  const { id, type, ...rest } = e.data || {};
-  const p = _pending.get(id);
-  if (!p) return;
-
-  if (type === "error") {
-    p.reject(new Error(rest.error || "Worker error"));
-  } else {
-    p.resolve({ type, ...rest });
-  }
-  _pending.delete(id);
-};
-
-function callWorker(msg) {
-  const id = ++_reqId;
-  return new Promise((resolve, reject) => {
-    _pending.set(id, { resolve, reject });
-    classifierWorker.postMessage({ id, ...msg });
-  });
-}
-
 async function extractAccessibilityKeywordsMany(texts, options = {}) {
-  const res = await callWorker({ type: "classify-many", texts, options });
-  if (res.type !== "result-many") throw new Error("Bulk classification failed");
-  return res.items; // array of raw outs: { labels:[], scores:[] }
+  const res = await fetch("/api/acc-classify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      texts,
+      labels: ACCESSIBILITY_LABELS_IN_REVIEWS,
+      options,
+    }),
+  });
+  if (!res.ok) throw new Error(`Server classify failed: ${res.status}`);
+  const json = await res.json();
+  // Shape: { items: [{ labels:[], scores:[] }, ...] }
+  return json.items || [];
 }
 
 function ensureAccKeywordsBlock() {
@@ -121,6 +106,7 @@ export async function recomputePlaceAccessibilityKeywords() {
   const texts = globals.reviews
     .filter((r) => r.place_id === placeId)
     .map((r) => r.comment);
+
   if (!texts.length) {
     renderAccSummary([]);
     renderPerReviewBadges([]);
