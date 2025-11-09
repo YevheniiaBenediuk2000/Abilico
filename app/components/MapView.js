@@ -5,6 +5,21 @@ import { useBasemapGallery } from './MapControls/useBasemapGallery'
 import { useAccessibilityLegend } from './MapControls/useAccessibilityLegend'
 import { useDrawHelpAlert } from './MapControls/useDrawHelpAlert'  // ✅ add this
 
+// ✅ Leaflet icons fix — must be loaded BEFORE map init
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+import iconUrl from "leaflet/dist/images/marker-icon.png";
+import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import shadowUrl from "leaflet/dist/images/marker-shadow.png";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl,
+    iconUrl,
+    shadowUrl,
+});
+
+
 export default function MapView() {
     const [map, setMap] = useState(null)
 

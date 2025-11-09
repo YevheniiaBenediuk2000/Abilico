@@ -22,7 +22,9 @@ export async function fetchRoute(coordinates, obstacleFeatures) {
     } else if (f.geometry.type === "MultiPolygon") {
       return f.geometry.coordinates;
     } else if (f.geometry.type === "Point") {
-      const poly = turfcircle(f.geometry.coordinates, f.properties.radius, {
+      const radius =
+          f.properties?.radius ?? f.radius ?? 3; // fallback to 3m if not set
+      const poly = turfcircle(f.geometry.coordinates, radius, {
         steps: 32,
         units: "meters",
       });
