@@ -43,6 +43,8 @@ export async function fetchRoute(coordinates, obstacleFeatures) {
     },
   };
 
+  console.log("🧭 RequestBody to ORS:", JSON.stringify(requestBody, null, 2));
+
   try {
     const response = await fetch(url, {
       method: "POST",

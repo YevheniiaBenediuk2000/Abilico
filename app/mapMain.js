@@ -97,19 +97,23 @@ function showQuickRoutePopup(latlng) {
 
     startBtn.addEventListener("click", async (ev) => {
         L.DomEvent.stop(ev);
+        console.log("🟢 CLICK: Start here clicked at latlng:", latlng);
         try {
             directionsUi.classList.remove("d-none");
             moveDepartureSearchBarUnderTo();
             mountInOffcanvas("Directions");
 
             await setFrom(latlng, null, { fit: false });
-            destinationSearchInput.focus();
+            // chInput.focus();
+            departureSearchInput.focus();
         } finally {
             map.closePopup(clickPopup);
+            console.log("🟢 Start here handler finished");
         }
     });
 
     goBtn.addEventListener("click", async (ev) => {
+        console.log("🟢 CLICK: Go here clicked at latlng:", latlng);
         L.DomEvent.stop(ev);
         try {
             directionsUi.classList.remove("d-none");
@@ -342,24 +346,25 @@ const geocoder = L.Control.Geocoder.photon({
 
 
 // 🚑 Patch Photon geocoder to always fire callback (Next.js / Turbopack safe)
-    geocoder.geocode = async function (query, cb) {
+    geocoder.reverse = async function (latlng, scale, cb) {
         try {
-            const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}`);
-            if (!res.ok) throw new Error(`Photon error: HTTP ${res.status}`);
+            const res = await fetch(
+                `https://photon.komoot.io/reverse?lat=${latlng.lat}&lon=${latlng.lng}`
+            );
+            if (!res.ok) throw new Error(`Photon reverse error: HTTP ${res.status}`);
             const json = await res.json();
 
-            // Convert Photon GeoJSON → Leaflet-compatible format
             const results = json.features.map((f) => ({
                 name: f.properties.name || f.properties.osm_value || "Unnamed",
                 center: [f.geometry.coordinates[1], f.geometry.coordinates[0]],
                 properties: f.properties,
             }));
 
-            // console.log("🌍 Photon geocode manual callback fired:", query, results);
+            console.log("🌍 Photon reverse manual callback fired:", latlng, results);
             cb(results);
         } catch (err) {
-            console.error("❌ Photon manual geocode failed:", err);
-            cb([]); // always fire callback so UI updates
+            console.error("❌ Photon manual reverse failed:", err);
+            cb([]); // always fire callback even on error
         }
     };
 
@@ -860,84 +865,109 @@ function clearRoute() {
         routeLayer = null;
     }
 }
+    async function updateRoute({fit = true} = {}) {
+        console.log("🧭 updateRoute() called:", { fromLatLng, toLatLng });
+        clearRoute();
 
-async function updateRoute({fit = true} = {}) {
-    clearRoute();
-    if (!fromLatLng || !toLatLng) return;
-
-    const key = showLoading("route");
-
-    try {
-        const geojson = await fetchRoute(
-            [
-                [fromLatLng.lng, fromLatLng.lat],
-                [toLatLng.lng, toLatLng.lat],
-            ],
-            obstacleFeatures
-        );
-
-        routeLayer = L.geoJSON(geojson, {
-            style: {color: "var(--bs-indigo)", weight: 5, opacity: 0.9},
-            interactive: false,
-        }).addTo(map);
-
-        const bounds = routeLayer.getBounds();
-        if (fit && bounds.isValid()) {
-            map.fitBounds(bounds, {padding: [120, 120]});
+        if (!fromLatLng || !toLatLng) {
+            console.warn("⚠️ updateRoute aborted: missing from/to");
+            return;
         }
-    } finally {
-        hideLoading(key);
-    }
-}
 
-function reverseAddressAt(latlng) {
-    const key = showLoading("reverse");
+        const key = showLoading("route");
 
-    return new Promise((resolve) => {
-        geocoder.reverse(latlng, map.options.crs.scale(18), (items) => {
+        try {
+            const geojson = await fetchRoute(
+                [
+                    [fromLatLng.lng, fromLatLng.lat],
+                    [toLatLng.lng, toLatLng.lat],
+                ],
+                obstacleFeatures
+            );
+            console.log("📦 fetchRoute() returned:", geojson);
+
+            if (!geojson) {
+                console.warn("⚠️ No route returned from API");
+                return;
+            }
+
+            routeLayer = L.geoJSON(geojson, {
+                style: {color: "var(--bs-indigo)", weight: 5, opacity: 0.9},
+                interactive: false,
+            }).addTo(map);
+
+            const bounds = routeLayer.getBounds();
+            if (fit && bounds.isValid()) {
+                map.fitBounds(bounds, {padding: [120, 120]});
+            }
+        } finally {
             hideLoading(key);
-
-            const best = items?.[0]?.name;
-            resolve(best || `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
-        });
-    });
-}
-
-async function setFrom(latlng, text, opts = {}) {
-    fromLatLng = latlng;
-    if (fromMarker) map.removeLayer(fromMarker);
-    fromMarker = L.marker(latlng, {
-        draggable: true,
-        icon: waypointDivIcon("A", WP_COLORS.start),
-    }).addTo(map);
-    attachDraggable(fromMarker, async (ll) => {
-        fromLatLng = ll;
-        departureSearchInput.value = await reverseAddressAt(ll);
-        updateRoute({fit: false});
-    });
-    departureSearchInput.value = text ?? (await reverseAddressAt(latlng));
-    updateRoute(opts);
-}
-
-async function setTo(latlng, text, opts = {}) {
-    toLatLng = latlng;
-    const directionsActive = !directionsUi.classList.contains("d-none");
-    if (directionsActive) {
-        if (toMarker) map.removeLayer(toMarker);
-        toMarker = L.marker(latlng, {
-            draggable: true,
-            icon: waypointDivIcon("B", WP_COLORS.end),
-        }).addTo(map);
-        attachDraggable(toMarker, async (ll) => {
-            toLatLng = ll;
-            destinationSearchInput.value = await reverseAddressAt(ll);
-            updateRoute({fit: false});
-        });
+        }
     }
 
-    destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
-    updateRoute(opts);
-}
+    async function setFrom(latlng, text, opts = {}) {
+        console.log("➡️ setFrom() called with:", { latlng, text, opts });
+
+        fromLatLng = latlng;
+        if (fromMarker) map.removeLayer(fromMarker);
+        fromMarker = L.marker(latlng, {
+            draggable: true,
+            icon: waypointDivIcon("A", WP_COLORS.start),
+        }).addTo(map);
+
+        attachDraggable(fromMarker, async (ll) => {
+            console.log("🌀 fromMarker dragged to:", ll);
+            fromLatLng = ll;
+            departureSearchInput.value = await reverseAddressAt(ll);
+            updateRoute({ fit: false });
+        });
+
+        const address = await reverseAddressAt(latlng);
+        console.log("📍 reverseAddressAt() returned:", address);
+        departureSearchInput.value = text ?? address;
+
+        console.log("✅ departureSearchInput.value now:", departureSearchInput.value);
+
+        updateRoute(opts);
+    }
+
+    async function setTo(latlng, text, opts = {}) {
+        console.log("➡️ setTo() called with:", { latlng, text, opts });
+        console.log("ℹ️ directionsUi visible?", !directionsUi.classList.contains("d-none"));
+        toLatLng = latlng;
+        const directionsActive = !directionsUi.classList.contains("d-none");
+        if (directionsActive) {
+            if (toMarker) map.removeLayer(toMarker);
+            toMarker = L.marker(latlng, {
+                draggable: true,
+                icon: waypointDivIcon("B", WP_COLORS.end),
+            }).addTo(map);
+            attachDraggable(toMarker, async (ll) => {
+                toLatLng = ll;
+                destinationSearchInput.value = await reverseAddressAt(ll);
+                updateRoute({fit: false});
+            });
+        }
+
+        destinationSearchInput.value = text ?? (await reverseAddressAt(latlng));
+        updateRoute(opts);
+    }
+
+    function reverseAddressAt(latlng) {
+        console.log("🧭 reverseAddressAt called for:", latlng);
+
+        const key = showLoading("reverse");
+
+        return new Promise((resolve) => {
+            geocoder.reverse(latlng, map.options.crs.scale(18), (items) => {
+                console.log("📍 reverseAddressAt → got items:", items);
+                hideLoading(key);
+
+                const best = items?.[0]?.name;
+                resolve(best || `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`);
+            });
+        });
+    }
 
 async function selectDepartureSuggestion(res) {
     toggleDepartureSuggestions(false);
