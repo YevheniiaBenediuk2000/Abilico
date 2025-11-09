@@ -10,6 +10,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.7.6",
     "@supabase/supabase-js": "^2.79.0",
     "@turf/buffer": "^7.2.0",
     "@turf/circle": "^7.2.0",
