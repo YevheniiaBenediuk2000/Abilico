@@ -76,21 +76,43 @@ export default function MapContainer() {
 
         <div className="offcanvas-body">
           {/* === Directions UI === */}
-          <div id="directions-ui" className="d-none">
-            <div id="departure-search-bar" className="position-relative mb-3">
-              <input
-                id="departure-search-input"
-                type="search"
-                className="form-control form-control-lg search-input"
-                placeholder="From…"
-              />
-              <ul
-                id="departure-suggestions"
-                className="list-group w-100 shadow d-none search-suggestions"
-              ></ul>
+          <div id="directions-ui" className="mb-3 d-none">
+            <div className="row g-2 align-items-center mb-1">
+              <div className="col">
+                <label
+                  className="form-label mb-1"
+                  htmlFor="departure-search-input"
+                >
+                  From
+                </label>
+                <div id="departure-search-bar" className="position-relative">
+                  <input
+                    id="departure-search-input"
+                    type="search"
+                    className="form-control form-control-lg search-input"
+                    placeholder="From…"
+                    aria-label="From…"
+                    aria-controls="departure-suggestions"
+                  />
+                  <ul
+                    aria-label="Search suggestions"
+                    id="departure-suggestions"
+                    className="list-group w-100 shadow d-none search-suggestions"
+                  ></ul>
+                </div>
+              </div>
             </div>
-            {/* 👇 Add this block */}
-            <label htmlFor="destination-search-input">To</label>
+
+            <div className="row g-2 align-items-center mb-2">
+              <div className="col">
+                <label
+                  className="form-label mb-1"
+                  htmlFor="destination-search-input"
+                >
+                  To
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* === Main photo (preview above tabs) === */}
@@ -185,6 +207,7 @@ export default function MapContainer() {
                     </button>
                   </div>
                 </div>
+
                 <div className="card shadow-sm">
                   <div
                     className="list-group list-group-flush"
@@ -218,6 +241,7 @@ export default function MapContainer() {
                         Submit Review
                       </button>
                     </form>
+
                     <ul id="reviews-list" className="list-group"></ul>
                   </div>
                 </div>
@@ -246,6 +270,7 @@ export default function MapContainer() {
         id="obstacleModal"
         tabIndex="-1"
         aria-hidden="true"
+        aria-labelledby="obstacleModalLabel"
       >
         <div className="modal-dialog">
           <form className="modal-content" id="obstacle-form">
@@ -323,6 +348,7 @@ export default function MapContainer() {
             style={{ width: "100%" }}
           ></div>
         </div>
+        <span className="visually-hidden">Loading…</span>
       </div>
 
       {/* === Toast Stack === */}
