@@ -662,13 +662,14 @@ async function initDrawingObstacles() {
   console.groupEnd();
 
   obstacleFeatures.forEach((row) => {
+    const props = row.properties || {}; 
     const feature = {
       type: "Feature",
       properties: {
         obstacleId: row.id,
         shape: row.type,
         title: row.description,
-        radius: row.radius,
+        radius: Number(props.radius) || 1, // ✅ default safe value
       },
       geometry: row.geometry,
     };
@@ -739,25 +740,28 @@ async function initDrawingObstacles() {
 
     hookLayerInteractions(layerToAdd, featureToStore.properties);
     attachBootstrapTooltip(
-      layerToAdd,
-      tooltipTextFromProps(featureToStore.properties)
+        layerToAdd,
+        tooltipTextFromProps(featureToStore.properties)
     );
 
     const key = showLoading("obstacles-put");
     try {
-      const { data, error } = await supabase
-        .from("obstacles")
-        .insert([
-          {
-            type: featureToStore.properties.shape,
-            description: featureToStore.properties.title,
-            geometry: featureToStore.geometry,
-            radius:
-              featureToStore.properties.radius ??
-              (e.layer.getRadius?.() || null),
-          },
-        ])
-        .select();
+      const {data, error} = await supabase
+          .from("obstacles")
+          .insert([
+            {
+              type: featureToStore.properties.shape,
+              geometry: featureToStore.geometry,
+              properties: {
+                title: featureToStore.properties.title,
+                shape: featureToStore.properties.shape,
+                radius:
+                    featureToStore.properties.radius ??
+                    (e.layer.getRadius?.() || null),
+              },
+            },
+          ])
+          .select();
 
       if (error) throw error;
 
@@ -768,7 +772,8 @@ async function initDrawingObstacles() {
         properties: {
           obstacleId: newObstacle.id,
           shape: newObstacle.type,
-          title: newObstacle.description,
+          title: newObstacle.properties.title,
+          radius: newObstacle.properties.radius,
         },
         geometry: newObstacle.geometry,
       });
@@ -780,7 +785,7 @@ async function initDrawingObstacles() {
     } finally {
       hideLoading(key);
     }
-  });
+  })
 
   // EDIT
   map.on(L.Draw.Event.EDITED, async (e) => {
